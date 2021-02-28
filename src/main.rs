@@ -187,6 +187,7 @@ fn search(
             println!();
             print_layout(&layout);
             io::stdout().write_formatted(&score, &format).unwrap();
+            print!("\n");
             best_score = score;
             best_layout = layout;
             failed = 0;
