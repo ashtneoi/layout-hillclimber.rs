@@ -118,7 +118,7 @@ fn layout_score(ngrams: &Ngrams, layout: &Layout) -> i64 {
             irs += inward_roll_score(igram, count, &char_to_key);
         }
     }
-    20 * irs + ss
+    15 * irs + ss
 }
 
 fn random_swap(layout: &Layout) -> Layout {
