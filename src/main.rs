@@ -77,7 +77,7 @@ fn inward_roll_score(
         let chr = chr as char;
         let (r, c) = char_to_key[&chr];
         match r {
-            0 => break,
+            0 => return 0,
             1 => row1 = true,
             3 => row3 = true,
             _ => (),
