@@ -55,7 +55,7 @@ fn get_ngrams(maxlen: usize) -> Ngrams {
 static KEY_TO_STRENGTH: &[&[i64]] = &[
     &[0, 0, 1, 1, 1, 1, 0, 0],
     &[1, 7, 8, 6, 6, 8, 7, 1],
-    &[6, 7, 8, 8, 8, 8, 7, 6],
+    &[6, 8, 8, 8, 8, 8, 8, 6],
     &[1, 2, 3, 7, 7, 3, 2, 1],
 ];
 
@@ -86,7 +86,7 @@ fn inward_roll_score(
         let chr = chr as char;
         let (r, c) = char_to_key[&chr];
         match r {
-            0 => return 0,
+            0 => return -(3 * count as i64 * ngram.len() as i64),
             1 => row1 = true,
             3 => row3 = true,
             _ => (),
@@ -95,7 +95,7 @@ fn inward_roll_score(
                 || (prev_col >= 4 && c as isize >= prev_col) {
             if c as isize == prev_col {
                 if c == 0 || c == 1 || c == 6 || c == 7 {
-                    return -(4 * count as i64 * ngram.len() as i64);
+                    return -(2 * count as i64 * ngram.len() as i64);
                 } else {
                     return -(count as i64 * ngram.len() as i64);
                 }
@@ -106,7 +106,7 @@ fn inward_roll_score(
         prev_col = c as isize;
     }
     if row1 && row3 {
-        return 0;
+        return -(count as i64 * ngram.len() as i64);
     } else {
         return count as i64 * ngram.len() as i64;
     }
