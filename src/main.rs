@@ -1,8 +1,10 @@
+use rand::prelude::*;
+use rand::seq::index::sample;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{prelude::*, BufReader};
 
-type Layout = Vec<String>;
+type Layout = Vec<Vec<u8>>;
 type Ngrams = Vec<Vec<(String, u64)>>;
 
 fn get_ngrams(maxlen: usize) -> Ngrams {
@@ -49,7 +51,7 @@ static KEY_TO_STRENGTH: &[&[u64]] = &[
 fn strength_score(
     ngram: &str,
     count: u64,
-    char_to_key: HashMap<char, (usize, usize)>
+    char_to_key: &HashMap<char, (usize, usize)>
 ) -> u64 {
     let mut score = 0;
     for chr in ngram.chars() {
@@ -62,16 +64,52 @@ fn strength_score(
 
 fn layout_score(ngrams: &Ngrams, layout: &Layout) -> u64 {
     let mut score = 0;
+
+    let mut char_to_key = HashMap::new();
+    for (r, row) in layout.iter().enumerate() {
+        for (c, &chr) in row.iter().enumerate() {
+            let chr = chr as char;
+            char_to_key.insert(chr, (r, c));
+        }
+    }
+
     for igrams in &ngrams[2..] {
-        for igram in igrams {
-            println!("{:?}", igram);
+        for &(ref igram, count) in igrams {
+            score += strength_score(igram, count, &char_to_key);
         }
     }
     score
 }
 
 fn random_swap(layout: &Layout) -> Layout {
-    layout.clone()
+    let mut rng = thread_rng();
+    let mut layout = layout.clone();
+
+    let mut keys = Vec::new();
+    let mut chars = Vec::new();
+    // TODO: Rng::gen_range isn't optimal if we're calling it in a loop.
+    let num_keys = rng.gen_range(2..=7);
+    for key_num in sample(&mut rng, 32, num_keys) {
+        let r = key_num >> 3;
+        let c = key_num & 0x7;
+        keys.push((r, c));
+        chars.push(layout[r][c]);
+    }
+    chars.shuffle(&mut rng);
+    for (&(r, c), &chr) in keys.iter().zip(&chars) {
+        layout[r][c] = chr;
+    }
+
+    layout
+}
+
+fn print_layout(layout: &Layout) {
+    for row in layout {
+        for &chr in row {
+            print!("{}", chr as char);
+        }
+        print!("\n");
+    }
 }
 
 fn search(
@@ -89,28 +127,31 @@ fn search(
         let mut layout;
         loop {
             layout = random_swap(&best_layout);
-            if layout[0].matches('.').count() == 5
-                    && !layout[0].contains('\'') {
+            if layout[0].iter().filter(|&&chr| chr == '.' as u8).count() == 5
+                    && !layout[0].contains(&('\'' as u8)) {
                 break;
             }
         }
 
         let score = layout_score(ngrams, &layout);
         if score > best_score {
+            print_layout(&layout);
+            println!("{}", score);
+            println!();
             best_score = score;
             best_layout = layout;
         }
     }
 
-    (attempts, best_layout)
+    (max_attempts[0], best_layout)
 }
 
 fn main() {
     let ngrams = get_ngrams(2);
     println!("{:?}", search(&ngrams, 0, vec![
-        "...QJZ..".to_string(),
-        "ABCDEFGH".to_string(),
-        "IKLMNOPR".to_string(),
-        "STUVWXY'".to_string(),
-    ], &[2]));
+        b"...QJZ..".to_vec(),
+        b"ABCDEFGH".to_vec(),
+        b"IKLMNOPR".to_vec(),
+        b"STUVWXY'".to_vec(),
+    ], &[1000]));
 }
