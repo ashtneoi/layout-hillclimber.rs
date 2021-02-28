@@ -160,6 +160,11 @@ fn search(
     start_layout: Layout,
     max_attempts: &[u64],
 ) -> (u64, Layout) {  // (attempts, best layout)
+    let format = num_format::CustomFormat::builder()
+        .grouping(num_format::Grouping::Standard)
+        .separator("_")
+        .build().unwrap();
+
     assert_eq!(max_attempts.len(), 1);
     let mut best_score = start_score;
     let mut best_layout = start_layout;
@@ -181,7 +186,7 @@ fn search(
             println!("failed = {}", failed);
             println!();
             print_layout(&layout);
-            println!("{}", score);
+            io::stdout().write_formatted(&score, &format).unwrap();
             best_score = score;
             best_layout = layout;
             failed = 0;
@@ -195,7 +200,6 @@ fn search(
 
 fn main() {
     let format = num_format::CustomFormat::builder()
-        //.decimal(".")
         .grouping(num_format::Grouping::Standard)
         .separator("_")
         .build().unwrap();
@@ -212,15 +216,15 @@ fn main() {
     let mut qxz = b"QXZ.....".clone();
     qxz.shuffle(&mut rng);
 
-    let (attempts, layout) = search(&ngrams, 0, vec![
+    let (attempts, best_layout) = search(&ngrams, 0, vec![
         qxz.to_vec(),
         not_qxz[0..8].to_vec(),
         not_qxz[8..16].to_vec(),
         not_qxz[16..24].to_vec(),
     ], &max_attempts);
     println!();
-    print_layout(&layout);
-    let best_score = layout_score(&ngrams, &layout);
+    print_layout(&best_layout);
+    let best_score = layout_score(&ngrams, &best_layout);
     io::stdout().write_formatted(&best_score, &format).unwrap();
     print!("\n");
     println!("attempts: {} / {:?}", attempts, max_attempts);
