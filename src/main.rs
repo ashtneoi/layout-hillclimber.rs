@@ -1,13 +1,22 @@
+use lazy_static::lazy_static;
 use num_format::WriteFormatted;
 use rand::prelude::*;
 use rand::seq::index::sample;
+use signal_hook::consts::signal::{SIGINT, SIGTERM};
+use signal_hook::flag;
 use std::collections::HashMap;
 use std::env;
 use std::fs::File;
 use std::io::{self, prelude::*, BufReader};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 type Layout = Vec<Vec<u8>>;
 type Ngrams = Vec<Vec<(String, u64)>>;
+
+lazy_static! {
+    static ref PLEASE_STOP: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
+}
 
 fn get_ngrams(maxlen: usize) -> Ngrams {
     let mut n = vec![vec![]];
@@ -44,10 +53,10 @@ fn get_ngrams(maxlen: usize) -> Ngrams {
 }
 
 static KEY_TO_STRENGTH: &[&[i64]] = &[
-    &[0, 1, 2, 2, 2, 2, 1, 0],
-    &[1, 5, 8, 6, 6, 8, 5, 1],
+    &[0, 0, 1, 1, 1, 1, 0, 0],
+    &[1, 7, 8, 6, 6, 8, 7, 1],
     &[6, 7, 8, 8, 8, 8, 7, 6],
-    &[2, 1, 4, 7, 7, 4, 1, 2],
+    &[1, 2, 3, 7, 7, 3, 2, 1],
 ];
 
 fn strength_score(
@@ -85,7 +94,11 @@ fn inward_roll_score(
         if (prev_col <= 3 && c as isize <= prev_col)
                 || (prev_col >= 4 && c as isize >= prev_col) {
             if c as isize == prev_col {
-                return -(count as i64 * ngram.len() as i64);
+                if c == 0 || c == 1 || c == 6 || c == 7 {
+                    return -(4 * count as i64 * ngram.len() as i64);
+                } else {
+                    return -(count as i64 * ngram.len() as i64);
+                }
             } else {
                 return 0;
             }
@@ -158,19 +171,22 @@ fn search(
     ngrams: &Ngrams,
     start_score: i64,
     start_layout: Layout,
-    max_attempts: &[u64],
-) -> (u64, Layout) {  // (attempts, best layout)
+    max_attempts: u64,
+) -> (u64, Layout, i64) {  // (attempts, best layout, best score)
     let format = num_format::CustomFormat::builder()
         .grouping(num_format::Grouping::Standard)
         .separator("_")
         .build().unwrap();
 
-    assert_eq!(max_attempts.len(), 1);
     let mut best_score = start_score;
     let mut best_layout = start_layout;
     let mut failed = 0;
 
-    for _ in 0..max_attempts[0] {
+    for i in 0..max_attempts {
+        if PLEASE_STOP.load(Ordering::Acquire) {
+            return (i, best_layout, best_score);
+        }
+
         let mut layout;
         loop {
             layout = random_swap(&best_layout);
@@ -196,7 +212,49 @@ fn search(
         }
     }
 
-    (max_attempts[0], best_layout)
+    (max_attempts, best_layout, best_score)
+}
+
+fn search_all(
+    ngrams: &Ngrams,
+    start_score: i64,
+    start_layout: &Layout, // seed layout?
+    max_attempts: &[i64],
+) -> (u64, Layout, i64) {  // (attempts, best layout, best_score)
+    if max_attempts.len() == 1 {
+        assert!(max_attempts[0] > 0);
+        return search(
+            ngrams, start_score, start_layout.clone(), max_attempts[0] as u64);
+    }
+
+    let mut total_attempts = 0;
+    let mut best_score = start_score;
+    let mut best_layout = start_layout.clone();
+
+    for _ in 0..max_attempts[0].abs() {
+        if PLEASE_STOP.load(Ordering::Acquire) {
+            break;
+        }
+
+        let (attempts, layout, score) = if max_attempts[0] < 0 {
+            search_all(ngrams, start_score, &start_layout, &max_attempts[1..])
+        } else {
+            search_all(ngrams, start_score, &best_layout, &max_attempts[1..])
+        };
+        total_attempts += attempts;
+        if score > best_score {
+            best_score = score;
+            best_layout = layout;
+        }
+
+        println!();
+        for _ in 1..max_attempts.len() {
+            print!("<");
+        }
+        print!("\n");
+    }
+
+    (total_attempts, best_layout, best_score)
 }
 
 fn main() {
@@ -207,7 +265,7 @@ fn main() {
 
     let ngrams = get_ngrams(4);
 
-    let max_attempts: Vec<u64> =
+    let max_attempts: Vec<i64> =
         env::args().skip(1).map(|x| x.parse().unwrap()).collect();
 
     let mut rng = rand::thread_rng();
@@ -218,7 +276,10 @@ fn main() {
     let mut qxz = b"QXZ.....".clone();
     qxz.shuffle(&mut rng);
 
-    let (attempts, best_layout) = search(&ngrams, 0, vec![
+    flag::register(SIGINT, PLEASE_STOP.clone()).unwrap();
+    flag::register(SIGTERM, PLEASE_STOP.clone()).unwrap();
+
+    let (attempts, best_layout, best_score) = search_all(&ngrams, 0, &vec![
         qxz.to_vec(),
         not_qxz[0..8].to_vec(),
         not_qxz[8..16].to_vec(),
@@ -226,7 +287,6 @@ fn main() {
     ], &max_attempts);
     println!();
     print_layout(&best_layout);
-    let best_score = layout_score(&ngrams, &best_layout);
     io::stdout().write_formatted(&best_score, &format).unwrap();
     print!("\n");
     println!("attempts: {} / {:?}", attempts, max_attempts);
