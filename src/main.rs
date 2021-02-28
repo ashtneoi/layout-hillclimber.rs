@@ -100,8 +100,6 @@ fn inward_roll_score(
 }
 
 fn layout_score(ngrams: &Ngrams, layout: &Layout) -> i64 {
-    let mut score = 0;
-
     let mut char_to_key = HashMap::new();
     for (r, row) in layout.iter().enumerate() {
         for (c, &chr) in row.iter().enumerate() {
@@ -110,15 +108,17 @@ fn layout_score(ngrams: &Ngrams, layout: &Layout) -> i64 {
         }
     }
 
+    let mut ss = 0;
     for &(ref igram, count) in &ngrams[1] {
-        score += strength_score(igram, count, &char_to_key);
+        ss += strength_score(igram, count, &char_to_key);
     }
+    let mut irs = 0;
     for igrams in &ngrams[2..] {
         for &(ref igram, count) in igrams {
-            score += 20 * inward_roll_score(igram, count, &char_to_key);
+            irs += inward_roll_score(igram, count, &char_to_key);
         }
     }
-    score
+    20 * irs + ss
 }
 
 fn random_swap(layout: &Layout) -> Layout {
@@ -205,6 +205,7 @@ fn main() {
         .build().unwrap();
 
     let ngrams = get_ngrams(4);
+
     let max_attempts: Vec<u64> =
         env::args().skip(1).map(|x| x.parse().unwrap()).collect();
 
