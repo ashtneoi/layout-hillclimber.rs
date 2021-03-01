@@ -272,10 +272,12 @@ fn main() {
         .separator("_")
         .build().unwrap();
 
-    let ngrams = get_ngrams(4);
+    let mut args = env::args().skip(1);
+    let nmax = args.next().unwrap().parse().unwrap();
+    let ngrams = get_ngrams(nmax);
 
     let max_attempts: Vec<i64> =
-        env::args().skip(1).map(|x| x.parse().unwrap()).collect();
+        args.map(|x| x.parse().unwrap()).collect();
 
     let mut rng = rand::thread_rng();
 
@@ -299,4 +301,5 @@ fn main() {
     io::stdout().write_formatted(&best_score, &format).unwrap();
     print!("\n");
     println!("attempts: {} / {:?}", attempts, max_attempts);
+    println!("n <= {}", nmax);
 }
