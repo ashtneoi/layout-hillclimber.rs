@@ -79,6 +79,8 @@ fn inward_roll_score(
     count: u64,
     char_to_key: &HashMap<char, (usize, usize)>,
 ) -> i64 {
+    let score_mult = count as i64 * ngram.len() as i64;
+
     let mut row1 = false;
     let mut row3 = false;
     let mut prev_col = -1;
@@ -86,7 +88,7 @@ fn inward_roll_score(
         let chr = chr as char;
         let (r, c) = char_to_key[&chr];
         match r {
-            0 => return -(3 * count as i64 * ngram.len() as i64),
+            0 => return 0,
             1 => row1 = true,
             3 => row3 = true,
             _ => (),
@@ -95,9 +97,9 @@ fn inward_roll_score(
                 || (prev_col >= 4 && c as isize >= prev_col) {
             if c as isize == prev_col {
                 if c == 0 || c == 1 || c == 6 || c == 7 {
-                    return -(2 * count as i64 * ngram.len() as i64);
+                    return score_mult;
                 } else {
-                    return -(count as i64 * ngram.len() as i64);
+                    return 2 * score_mult;
                 }
             } else {
                 return 0;
@@ -106,9 +108,9 @@ fn inward_roll_score(
         prev_col = c as isize;
     }
     if row1 && row3 {
-        return -(count as i64 * ngram.len() as i64);
+        return 2 * score_mult;
     } else {
-        return count as i64 * ngram.len() as i64;
+        return 4 * score_mult;
     }
 }
 
