@@ -53,10 +53,10 @@ fn get_ngrams(maxlen: usize) -> Ngrams {
 }
 
 static KEY_TO_STRENGTH: &[&[i64]] = &[
-    &[0, 0, 1, 1, 1, 1, 0, 0],
+    &[0, 0, 2, 1, 1, 2, 0, 0],
     &[1, 7, 8, 6, 6, 8, 7, 1],
-    &[6, 8, 8, 8, 8, 8, 8, 6],
-    &[1, 2, 3, 7, 7, 3, 2, 1],
+    &[6, 9, 10, 9, 9, 10, 9, 6],
+    &[3, 1, 1, 8, 8, 1, 1, 3],
 ];
 
 fn strength_score(
@@ -88,7 +88,7 @@ fn inward_roll_score(
         let chr = chr as char;
         let (r, c) = char_to_key[&chr];
         match r {
-            0 => return 0,
+            0 => return score_mult,
             1 => row1 = true,
             3 => row3 = true,
             _ => (),
@@ -96,13 +96,15 @@ fn inward_roll_score(
         if (prev_col <= 3 && c as isize <= prev_col)
                 || (prev_col >= 4 && c as isize >= prev_col) {
             if c as isize == prev_col {
+                // CSFU
                 if c == 0 || c == 1 || c == 6 || c == 7 {
-                    return score_mult;
+                    return 0;
                 } else {
-                    return 2 * score_mult;
+                    return score_mult;
                 }
             } else {
-                return 0;
+                // outward roll
+                return 3 * score_mult;
             }
         }
         prev_col = c as isize;
@@ -114,7 +116,7 @@ fn inward_roll_score(
     }
 }
 
-fn layout_score(ngrams: &Ngrams, layout: &Layout) -> i64 {
+fn layout_score(ngrams: &Ngrams, layout: &Layout, print_details: bool) -> i64 {
     let mut char_to_key = HashMap::new();
     for (r, row) in layout.iter().enumerate() {
         for (c, &chr) in row.iter().enumerate() {
@@ -133,7 +135,19 @@ fn layout_score(ngrams: &Ngrams, layout: &Layout) -> i64 {
             irs += inward_roll_score(igram, count, &char_to_key);
         }
     }
-    15 * irs + ss
+    if print_details {
+        let format = num_format::CustomFormat::builder()
+            .grouping(num_format::Grouping::Standard)
+            .separator("_")
+            .build().unwrap();
+
+        print!("irs = ");
+        io::stdout().write_formatted(&irs, &format).unwrap();
+        print!("; ss = ");
+        io::stdout().write_formatted(&ss, &format).unwrap();
+        print!("\n");
+    }
+    4 * irs + ss
 }
 
 fn random_swap(layout: &Layout) -> Layout {
@@ -192,7 +206,7 @@ fn search(
             }
         }
 
-        let score = layout_score(ngrams, &layout);
+        let score = layout_score(ngrams, &layout, false);
         if score > best_score {
             best_score = score;
             best_layout = layout;
@@ -302,6 +316,7 @@ fn main() {
     print_layout(&best_layout);
     io::stdout().write_formatted(&best_score, &format).unwrap();
     print!("\n");
+    layout_score(&ngrams, &best_layout, true);
     println!("attempts: {} / {:?}", attempts, max_attempts);
     println!("n <= {}", nmax);
 }
