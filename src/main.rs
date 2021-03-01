@@ -173,14 +173,8 @@ fn search(
     start_layout: Layout,
     max_attempts: u64,
 ) -> (u64, Layout, i64) {  // (attempts, best layout, best score)
-    let format = num_format::CustomFormat::builder()
-        .grouping(num_format::Grouping::Standard)
-        .separator("_")
-        .build().unwrap();
-
     let mut best_score = start_score;
     let mut best_layout = start_layout;
-    let mut failed = 0;
 
     for i in 0..max_attempts {
         if PLEASE_STOP.load(Ordering::Acquire) {
@@ -198,17 +192,8 @@ fn search(
 
         let score = layout_score(ngrams, &layout);
         if score > best_score {
-            println!();
-            println!("failed = {}", failed);
-            println!();
-            print_layout(&layout);
-            io::stdout().write_formatted(&score, &format).unwrap();
-            print!("\n");
             best_score = score;
             best_layout = layout;
-            failed = 0;
-        } else {
-            failed += 1;
         }
     }
 
@@ -231,27 +216,51 @@ fn search_all(
     let mut best_score = start_score;
     let mut best_layout = start_layout.clone();
 
-    for _ in 0..max_attempts[0].abs() {
-        if PLEASE_STOP.load(Ordering::Acquire) {
-            break;
-        }
+    if max_attempts[0] > 0 {
+        for _ in 0..max_attempts[0] {
+            if PLEASE_STOP.load(Ordering::Acquire) {
+                break;
+            }
 
-        let (attempts, layout, score) = if max_attempts[0] < 0 {
-            search_all(ngrams, start_score, &start_layout, &max_attempts[1..])
-        } else {
-            search_all(ngrams, start_score, &best_layout, &max_attempts[1..])
-        };
-        total_attempts += attempts;
-        if score > best_score {
-            best_score = score;
-            best_layout = layout;
-        }
+            let (attempts, layout, score) = search_all(
+                ngrams, start_score, &best_layout, &max_attempts[1..]);
+            total_attempts += attempts;
+            if score > best_score {
+                best_score = score;
+                best_layout = layout;
+            }
 
-        println!();
-        for _ in 1..max_attempts.len() {
-            print!("<");
+            println!();
+            for _ in 1..max_attempts.len() {
+                print!("<");
+            }
+            print!("\n");
         }
-        print!("\n");
+    } else {
+        crossbeam::scope(|scope| {
+            let mut children = Vec::new();
+            for _ in 0..max_attempts[0].abs() {
+                children.push(scope.spawn(|_| {
+                    search_all(
+                        ngrams, start_score, start_layout, &max_attempts[1..])
+                }));
+            }
+
+            for child in children {
+                let (attempts, layout, score) = child.join().unwrap();
+                total_attempts += attempts;
+                if score > best_score {
+                    best_score = score;
+                    best_layout = layout;
+                }
+
+                println!();
+                for _ in 1..max_attempts.len() {
+                    print!("<");
+                }
+                print!("\n");
+            }
+        }).unwrap();
     }
 
     (total_attempts, best_layout, best_score)
