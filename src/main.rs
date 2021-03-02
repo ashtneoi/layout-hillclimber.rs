@@ -116,6 +116,24 @@ fn inward_roll_score(
     }
 }
 
+fn balance_score(
+    letters: &[(String, u64)],
+    char_to_key: &HashMap<char, (usize, usize)>,
+) -> i64 {
+    let mut left_sum: i64 = 0;
+    let mut right_sum: i64 = 0;
+    for &(ref g, count) in letters {
+        let chr = g.chars().next().unwrap();
+        let (_, c) = char_to_key[&chr];
+        if c <= 3 {
+            left_sum += count as i64;
+        } else {
+            right_sum += count as i64;
+        }
+    }
+    -(left_sum - right_sum).abs()
+}
+
 fn layout_score(ngrams: &Ngrams, layout: &Layout, print_details: bool) -> i64 {
     let mut char_to_key = HashMap::new();
     for (r, row) in layout.iter().enumerate() {
@@ -135,6 +153,7 @@ fn layout_score(ngrams: &Ngrams, layout: &Layout, print_details: bool) -> i64 {
             irs += inward_roll_score(igram, count, &char_to_key);
         }
     }
+    let bs = balance_score(&ngrams[1], &char_to_key);
     if print_details {
         let format = num_format::CustomFormat::builder()
             .grouping(num_format::Grouping::Standard)
@@ -145,9 +164,11 @@ fn layout_score(ngrams: &Ngrams, layout: &Layout, print_details: bool) -> i64 {
         io::stdout().write_formatted(&irs, &format).unwrap();
         print!("; ss = ");
         io::stdout().write_formatted(&ss, &format).unwrap();
+        print!("; bs = ");
+        io::stdout().write_formatted(&bs, &format).unwrap();
         print!("\n");
     }
-    4 * irs + ss
+    2 * irs + ss + 8000 * bs
 }
 
 fn random_swap(layout: &Layout) -> Layout {
