@@ -114,27 +114,23 @@ fn row_score(
     let score_mult = count as i64 * ngram.len() as i64;
 
     let mut rows_in_hand = [
-        [false, false, false, false],
-        [false, false, false, false],
+        [0, 0, 0, 0],
+        [0, 0, 0, 0],
     ];
 
     for chr in ngram.chars() {
         let chr = chr as char;
         let (r, c) = char_to_key[&chr];
-        rows_in_hand[if c <= 3 { 0 } else { 1 }][r] = true;
+        rows_in_hand[(c <= 3) as usize][r] = 1;
     }
 
-    let mut score = 0;
-    for rows in &rows_in_hand {
-        score += match rows {
-            &[true, _, _, _] => 0,
-            &[false, true, true, true] => 0,
-            | &[false, true, true, false]
-            | &[false, false, true, true] => score_mult,
-            _ => 2 * score_mult,
-        };
-    }
-    score
+    rows_in_hand.iter().map(|rows| {
+        if rows[0] == 1 {
+            0
+        } else {
+            (3 - rows.iter().sum::<i64>()) * score_mult
+        }
+    }).sum()
 }
 
 fn balance_score(
@@ -196,7 +192,7 @@ fn layout_score(ngrams: &Ngrams, layout: &Layout, print_details: bool) -> i64 {
         io::stdout().write_formatted(&bs, &format).unwrap();
         print!("\n");
     }
-    2 * irs + ss + 8000 * bs
+    2 * irs + 2 * ss + 2 * rs + 8000 * bs
 }
 
 fn random_swap(layout: &Layout) -> Layout {
