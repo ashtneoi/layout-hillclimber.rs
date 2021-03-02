@@ -81,39 +81,60 @@ fn inward_roll_score(
 ) -> i64 {
     let score_mult = count as i64 * ngram.len() as i64;
 
-    let mut row1 = false;
-    let mut row3 = false;
+    let mut inward = true;
     let mut prev_col = -1;
     for chr in ngram.chars() {
         let chr = chr as char;
-        let (r, c) = char_to_key[&chr];
-        match r {
-            0 => return score_mult,
-            1 => row1 = true,
-            3 => row3 = true,
-            _ => (),
-        }
+        let (_, c) = char_to_key[&chr];
         if (prev_col <= 3 && c as isize <= prev_col)
                 || (prev_col >= 4 && c as isize >= prev_col) {
             if c as isize == prev_col {
-                // CSFU
-                if c == 0 || c == 1 || c == 6 || c == 7 {
-                    return 0;
-                } else {
-                    return score_mult;
-                }
+                // CSFU; not acceptable
+                return 0;
             } else {
-                // outward roll
-                return 3 * score_mult;
+                // outward
+                inward = false;
             }
         }
         prev_col = c as isize;
     }
-    if row1 && row3 {
-        return 2 * score_mult;
+
+    if inward {
+        2 * score_mult
     } else {
-        return 4 * score_mult;
+        score_mult
     }
+}
+
+fn row_score(
+    ngram: &str,
+    count: u64,
+    char_to_key: &HashMap<char, (usize, usize)>,
+) -> i64 {
+    let score_mult = count as i64 * ngram.len() as i64;
+
+    let mut rows_in_hand = [
+        [false, false, false, false],
+        [false, false, false, false],
+    ];
+
+    for chr in ngram.chars() {
+        let chr = chr as char;
+        let (r, c) = char_to_key[&chr];
+        rows_in_hand[if c <= 3 { 0 } else { 1 }][r] = true;
+    }
+
+    let mut score = 0;
+    for rows in &rows_in_hand {
+        score += match rows {
+            &[true, _, _, _] => 0,
+            &[false, true, true, true] => 0,
+            | &[false, true, true, false]
+            | &[false, false, true, true] => score_mult,
+            _ => 2 * score_mult,
+        };
+    }
+    score
 }
 
 fn balance_score(
@@ -148,9 +169,11 @@ fn layout_score(ngrams: &Ngrams, layout: &Layout, print_details: bool) -> i64 {
         ss += strength_score(igram, count, &char_to_key);
     }
     let mut irs = 0;
+    let mut rs = 0;
     for igrams in &ngrams[2..] {
         for &(ref igram, count) in igrams {
             irs += inward_roll_score(igram, count, &char_to_key);
+            rs += row_score(igram, count, &char_to_key);
         }
     }
     let bs = balance_score(&ngrams[1], &char_to_key);
@@ -162,9 +185,14 @@ fn layout_score(ngrams: &Ngrams, layout: &Layout, print_details: bool) -> i64 {
 
         print!("irs = ");
         io::stdout().write_formatted(&irs, &format).unwrap();
-        print!("; ss = ");
+        print!("\n");
+        print!("rs = ");
+        io::stdout().write_formatted(&rs, &format).unwrap();
+        print!("\n");
+        print!("ss = ");
         io::stdout().write_formatted(&ss, &format).unwrap();
-        print!("; bs = ");
+        print!("\n");
+        print!("bs = ");
         io::stdout().write_formatted(&bs, &format).unwrap();
         print!("\n");
     }
