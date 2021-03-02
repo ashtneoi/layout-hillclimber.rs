@@ -127,6 +127,8 @@ fn row_score(
     rows_in_hand.iter().map(|rows| {
         if rows[0] == 1 {
             0
+        } else if rows[1] == 1 && rows[3] == 1 {
+            0
         } else {
             (3 - rows.iter().sum::<i64>()) * score_mult
         }
