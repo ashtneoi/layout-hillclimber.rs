@@ -147,7 +147,9 @@ fn roll_score(
                 }
             } else if r - prev_r == 1 {
                 // down 1
-                score += 2 * count as i64;
+                if !(prev_lc == 0 && (lc == 1 || lc == 2)) {
+                    score += 2 * count as i64;
+                }
             } else if prev_r == 3 && r == 1 {
                 // up 2
                 if prev_lc == 0 && lc == 2 {
