@@ -74,65 +74,105 @@ fn strength_score(
     score
 }
 
-fn inward_roll_score(
+fn roll_score(
     ngram: &str,
     count: u64,
     char_to_key: &HashMap<char, (usize, usize)>,
 ) -> i64 {
-    let score_mult = count as i64 * ngram.len() as i64;
+    let mut score: i64 = 0;
 
-    let mut inward = true;
-    let mut prev_col = -1;
-    for chr in ngram.chars() {
-        let chr = chr as char;
-        let (_, c) = char_to_key[&chr];
-        if (prev_col <= 3 && c as isize <= prev_col)
-                || (prev_col >= 4 && c as isize >= prev_col) {
-            if c as isize == prev_col {
-                // CSFU; not acceptable
-                return 0;
-            } else {
-                // outward
-                inward = false;
-            }
-        }
-        prev_col = c as isize;
-    }
-
-    if inward {
-        2 * score_mult
-    } else {
-        score_mult
-    }
-}
-
-fn row_score(
-    ngram: &str,
-    count: u64,
-    char_to_key: &HashMap<char, (usize, usize)>,
-) -> i64 {
-    let score_mult = count as i64 * ngram.len() as i64;
-
-    let mut rows_in_hand = [
-        [0, 0, 0, 0],
-        [0, 0, 0, 0],
-    ];
-
+    let mut prev_r: isize = -1;
+    let mut prev_c: isize = -1;
     for chr in ngram.chars() {
         let chr = chr as char;
         let (r, c) = char_to_key[&chr];
-        rows_in_hand[(c <= 3) as usize][r] = 1;
+        let r = r as isize;
+        let c = c as isize;
+
+        let prev_lc;
+        let lc;
+        if prev_c <= 3 {
+            prev_lc = prev_c;
+            lc = c;
+        } else {
+            prev_lc = 7 - prev_c;
+            lc = 7 - c;
+        }
+
+        if lc < prev_lc {
+            // outward
+            if r == 0 || prev_r <= 0 {
+                // nothing
+            } else if prev_r == r {
+                score += 2 * count as i64;
+            } else if prev_r - r == 1 {
+                // up 1
+                score += count as i64;
+            } else if r - prev_r == 1 {
+                // down 1
+                if !(prev_lc == 3 && lc == 0) {
+                    score += count as i64;
+                }
+            } else if prev_r == 3 && r == 1 {
+                // up 2
+                if prev_lc == 3 && (lc == 1 || lc == 2) {
+                    // iffy :/
+                    score += count as i64;
+                }
+            } else if prev_r == 1 && r == 3 {
+                // down 2
+                if prev_lc == 2 && lc == 0 {
+                    score += count as i64;
+                }
+            } else {
+                unreachable!();
+            }
+        } else if lc == prev_lc {
+            // CSFU
+            if lc <= 1 {
+                score -= 4 * count as i64;
+            } else {
+                score -= 2 * count as i64;
+            }
+        } else if lc <= 3 {
+            // inward
+            if r == 0 || prev_r <= 0 {
+                // nothing
+            } else if prev_r == r {
+                score += 3 * count as i64;
+            } else if prev_r - r == 1 {
+                // up 1
+                if !(prev_lc == 0 && lc == 3) {
+                    score += 2 * count as i64;
+                }
+            } else if r - prev_r == 1 {
+                // down 1
+                score += 2 * count as i64;
+            } else if prev_r == 3 && r == 1 {
+                // up 2
+                if prev_lc == 0 && lc == 2 {
+                    // iffy :/
+                    score += count as i64;
+                }
+            } else if prev_r == 1 && r == 3 {
+                // down 2
+                if (prev_lc == 1 || prev_lc == 2) && lc == 3 {
+                    // also iffy :/
+                    score += count as i64;
+                }
+            } else {
+                unreachable!();
+            }
+        } else {
+            // hand switch
+            score += count as i64;
+        }
+
+        prev_r = r;
+        prev_c = c;
     }
 
-    rows_in_hand.iter().map(|rows| {
-        if rows[0] == 1 {
-            0
-        } else if rows[1] == 1 && rows[3] == 1 {
-            0
-        } else {
-            (3 - rows.iter().sum::<i64>()) * score_mult
-        }
-    }).sum()
+    score
 }
 
 fn balance_score(
@@ -154,6 +194,14 @@ fn balance_score(
 }
 
 fn layout_score(ngrams: &Ngrams, layout: &Layout, print_details: bool) -> i64 {
+    for row in layout {
+        for window in row.windows(3) {
+            if window == &[0x41, 0x4E, 0x54] {
+                return 0;
+            }
+        }
+    }
+
     let mut char_to_key = HashMap::new();
     for (r, row) in layout.iter().enumerate() {
         for (c, &chr) in row.iter().enumerate() {
@@ -166,12 +214,10 @@ fn layout_score(ngrams: &Ngrams, layout: &Layout, print_details: bool) -> i64 {
     for &(ref igram, count) in &ngrams[1] {
         ss += strength_score(igram, count, &char_to_key);
     }
-    let mut irs = 0;
     let mut rs = 0;
     for igrams in &ngrams[2..] {
         for &(ref igram, count) in igrams {
-            irs += inward_roll_score(igram, count, &char_to_key);
-            rs += row_score(igram, count, &char_to_key);
+            rs += roll_score(igram, count, &char_to_key);
         }
     }
     let bs = balance_score(&ngrams[1], &char_to_key);
@@ -181,9 +227,6 @@ fn layout_score(ngrams: &Ngrams, layout: &Layout, print_details: bool) -> i64 {
             .separator("_")
             .build().unwrap();
 
-        print!("irs = ");
-        io::stdout().write_formatted(&irs, &format).unwrap();
-        print!("\n");
         print!("rs = ");
         io::stdout().write_formatted(&rs, &format).unwrap();
         print!("\n");
@@ -194,7 +237,7 @@ fn layout_score(ngrams: &Ngrams, layout: &Layout, print_details: bool) -> i64 {
         io::stdout().write_formatted(&bs, &format).unwrap();
         print!("\n");
     }
-    2 * irs + 2 * ss + 2 * rs + 8000 * bs
+    2 * ss + 2 * rs + 8000 * bs
 }
 
 fn random_swap(layout: &Layout) -> Layout {
