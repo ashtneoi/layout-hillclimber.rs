@@ -7,7 +7,8 @@ use signal_hook::flag;
 use std::collections::HashMap;
 use std::env;
 use std::fs::File;
-use std::io::{self, prelude::*, BufReader};
+use std::io::{self, prelude::*, BufReader, ErrorKind};
+use std::process::exit;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -381,34 +382,82 @@ fn main() {
         .build().unwrap();
 
     let mut args = env::args().skip(1);
-    let nmax = args.next().unwrap().parse().unwrap();
-    let ngrams = get_ngrams(nmax);
 
-    let max_attempts: Vec<i64> =
-        args.map(|x| x.parse().unwrap()).collect();
+    let cmd = args.next().unwrap();
+    if cmd == "search" {
+        let nmax = args.next().unwrap().parse().unwrap();
+        let ngrams = get_ngrams(nmax);
 
-    let mut rng = rand::thread_rng();
+        let max_attempts: Vec<i64> =
+            args.map(|x| x.parse().unwrap()).collect();
 
-    let mut not_qxz = b"ABCDEFGHIJKLMNOPRSTUVWY'".clone();
-    assert_eq!(not_qxz.len(), 26 + 1 - 3);
-    not_qxz.shuffle(&mut rng);
-    let mut qxz = b"QXZ.....".clone();
-    qxz.shuffle(&mut rng);
+        let mut rng = rand::thread_rng();
 
-    flag::register(SIGINT, PLEASE_STOP.clone()).unwrap();
-    flag::register(SIGTERM, PLEASE_STOP.clone()).unwrap();
+        let mut not_qxz = b"ABCDEFGHIJKLMNOPRSTUVWY'".clone();
+        assert_eq!(not_qxz.len(), 26 + 1 - 3);
+        not_qxz.shuffle(&mut rng);
+        let mut qxz = b"QXZ.....".clone();
+        qxz.shuffle(&mut rng);
 
-    let (attempts, best_layout, best_score) = search_all(&ngrams, 0, &vec![
-        qxz.to_vec(),
-        not_qxz[0..8].to_vec(),
-        not_qxz[8..16].to_vec(),
-        not_qxz[16..24].to_vec(),
-    ], &max_attempts);
-    println!();
-    print_layout(&best_layout);
-    io::stdout().write_formatted(&best_score, &format).unwrap();
-    print!("\n");
-    layout_score(&ngrams, &best_layout, true);
-    println!("attempts: {} / {:?}", attempts, max_attempts);
-    println!("n <= {}", nmax);
+        flag::register(SIGINT, PLEASE_STOP.clone()).unwrap();
+        flag::register(SIGTERM, PLEASE_STOP.clone()).unwrap();
+
+        let (attempts, best_layout, best_score) = search_all(&ngrams, 0, &vec![
+            qxz.to_vec(),
+            not_qxz[0..8].to_vec(),
+            not_qxz[8..16].to_vec(),
+            not_qxz[16..24].to_vec(),
+        ], &max_attempts);
+        println!();
+        print_layout(&best_layout);
+        layout_score(&ngrams, &best_layout, true);
+        io::stdout().write_formatted(&best_score, &format).unwrap();
+        print!("\n");
+        println!("attempts: {} / {:?}", attempts, max_attempts);
+        println!("n <= {}", nmax);
+    } else if cmd == "score" {
+        let nmax = args.next().unwrap().parse().unwrap();
+        let ngrams = get_ngrams(nmax);
+
+        let mut stdin = io::stdin();
+        let mut layout = Vec::new();
+        let mut b = vec![0];
+        for _ in 0..=3 {
+            let mut row = Vec::new();
+            for _ in 0..=7 {
+                let mut chr;
+                loop {
+                    match stdin.read(&mut b) {
+                        Ok(count) if count == 0 => {
+                            eprintln!("Error: unexpected end of file");
+                            exit(1);
+                        },
+                        Ok(_) => {
+                            chr = b[0] as char;
+                            if let 'A'..='Z' | 'a'..='z' | '\'' | '.' = chr {
+                                chr.make_ascii_uppercase();
+                                break;
+                            } else if let '-' | '_' = chr {
+                                chr = '.';
+                                break;
+                            }
+                        },
+                        Err(e) if e.kind() == ErrorKind::Interrupted => (),
+                        Err(e) => {
+                            eprintln!("Error: {}", &e);
+                            exit(1);
+                        },
+                    }
+                }
+                row.push(chr as u8);
+            }
+            layout.push(row);
+        }
+
+        print_layout(&layout);
+        let score = layout_score(&ngrams, &layout, true);
+        io::stdout().write_formatted(&score, &format).unwrap();
+        print!("\n");
+        println!("n <= {}", nmax);
+    }
 }
