@@ -131,7 +131,7 @@ fn roll_score(
         } else if lc == prev_lc {
             // CSFU
             if lc <= 1 {
-                score -= 4 * count as i64;
+                score -= 6 * count as i64;
             } else {
                 score -= 2 * count as i64;
             }
@@ -240,7 +240,7 @@ fn layout_score(ngrams: &Ngrams, layout: &Layout, print_details: bool) -> i64 {
         io::stdout().write_formatted(&bs, &format).unwrap();
         print!("\n");
     }
-    2 * ss + 2 * rs + 8000 * bs
+    3 * ss + rs + 2000 * bs
 }
 
 fn random_swap(layout: &Layout) -> Layout {
