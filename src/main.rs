@@ -240,7 +240,7 @@ fn layout_score(ngrams: &Ngrams, layout: &Layout, print_details: bool) -> i64 {
         io::stdout().write_formatted(&bs, &format).unwrap();
         print!("\n");
     }
-    3 * ss + rs + 2000 * bs
+    3 * ss + 3 * rs + 2000 * bs
 }
 
 fn random_swap(layout: &Layout) -> Layout {
