@@ -53,11 +53,13 @@ fn get_ngrams(maxlen: usize) -> Ngrams {
     n
 }
 
+static COL_COUNT: isize = 10;
+static COL_HALF: isize = COL_COUNT / 2;
+
 static KEY_TO_STRENGTH: &[&[i64]] = &[
-    &[-6, -4, -3, -4, -4, -3, -4, -6],
-    &[1, 7, 8, 6, 6, 8, 7, 1],
-    &[6, 9, 10, 9, 9, 10, 9, 6],
-    &[3, 1, 1, 8, 8, 1, 1, 3],
+    &[1, 7, 8, 6, 1, 1, 6, 8, 7, 1],
+    &[6, 9, 10, 9, 5, 5, 9, 10, 9, 6],
+    &[3, 1, 1, 8, 3, 3, 8, 1, 1, 3],
 ];
 
 fn strength_score(
@@ -92,17 +94,17 @@ fn roll_score(
 
         let prev_lc;
         let lc;
-        if prev_c <= 3 {
+        if prev_c <= COL_HALF - 1 {
             prev_lc = prev_c;
             lc = c;
         } else {
-            prev_lc = 7 - prev_c;
-            lc = 7 - c;
+            prev_lc = COL_COUNT - 1 - prev_c;
+            lc = COL_COUNT - 1 - c;
         }
 
         if lc < prev_lc {
             // outward
-            if r == 0 || prev_r <= 0 {
+            if r == 3 || prev_r == 3 || prev_r == -1 {
                 // nothing
             } else if prev_r == r {
                 score += 2 * count as i64;
@@ -111,22 +113,22 @@ fn roll_score(
                 score += count as i64;
             } else if r - prev_r == 1 {
                 // down 1
-                if !(prev_lc == 3 && lc == 0) {
+                if !(prev_lc == COL_HALF - 1 && lc == 0) {
                     score += count as i64;
                 }
-            } else if prev_r == 3 && r == 1 {
+            } else if prev_r == 2 && r == 0 {
                 // up 2
-                if prev_lc == 3 && (lc == 1 || lc == 2) {
+                if prev_lc == COL_HALF - 1 && (lc == 1 || lc == 2) {
                     // iffy :/
                     score += count as i64;
                 }
-            } else if prev_r == 1 && r == 3 {
+            } else if prev_r == 0 && r == 2 {
                 // down 2
                 if prev_lc == 2 && lc == 0 {
                     score += count as i64;
                 }
             } else {
-                unreachable!();
+                unreachable!("{} {}", r, prev_r);
             }
         } else if lc == prev_lc {
             // CSFU
@@ -135,15 +137,15 @@ fn roll_score(
             } else {
                 score -= 2 * count as i64;
             }
-        } else if lc <= 3 {
+        } else if lc <= COL_HALF - 1 {
             // inward
-            if r == 0 || prev_r <= 0 {
+            if r == 3 || prev_r == 3 || prev_r == -1 {
                 // nothing
             } else if prev_r == r {
                 score += 3 * count as i64;
             } else if prev_r - r == 1 {
                 // up 1
-                if !(prev_lc == 0 && lc == 3) {
+                if !(prev_lc == 0 && lc == COL_HALF - 1) {
                     score += 2 * count as i64;
                 }
             } else if r - prev_r == 1 {
@@ -151,20 +153,20 @@ fn roll_score(
                 if !(prev_lc == 0 && (lc == 1 || lc == 2)) {
                     score += 2 * count as i64;
                 }
-            } else if prev_r == 3 && r == 1 {
+            } else if prev_r == 2 && r == 0 {
                 // up 2
                 if prev_lc == 0 && lc == 2 {
                     // iffy :/
                     score += count as i64;
                 }
-            } else if prev_r == 1 && r == 3 {
+            } else if prev_r == 0 && r == 2 {
                 // down 2
-                if (prev_lc == 1 || prev_lc == 2) && lc == 3 {
+                if (prev_lc == 1 || prev_lc == 2) && lc == COL_HALF - 1 {
                     // also iffy :/
                     score += count as i64;
                 }
             } else {
-                unreachable!();
+                unreachable!("{} {}", r, prev_r);
             }
         } else {
             // hand switch
@@ -187,7 +189,7 @@ fn balance_score(
     for &(ref g, count) in letters {
         let chr = g.chars().next().unwrap();
         let (_, c) = char_to_key[&chr];
-        if c <= 3 {
+        if c <= COL_HALF as usize - 1 {
             left_sum += count as i64;
         } else {
             right_sum += count as i64;
@@ -199,7 +201,7 @@ fn balance_score(
 fn layout_score(ngrams: &Ngrams, layout: &Layout, print_details: bool) -> i64 {
     for row in layout {
         for window in row.windows(3) {
-            if window == &[0x41, 0x4E, 0x54] {
+            if window == &[0x41, 0x4E, 0x54] { // forbidden word
                 return 0;
             }
         }
@@ -253,9 +255,9 @@ fn random_swap(layout: &Layout) -> Layout {
     let mut chars = Vec::new();
     // TODO: Rng::gen_range isn't optimal if we're calling it in a loop.
     let num_keys = rng.gen_range(2..=7);
-    for key_num in sample(&mut rng, 32, num_keys) {
-        let r = key_num >> 3;
-        let c = key_num & 0x7;
+    for key_num in sample(&mut rng, 30, num_keys) {
+        let r = key_num / 10;
+        let c = key_num % 10;
         keys.push((r, c));
         chars.push(layout[r][c]);
     }
@@ -290,14 +292,7 @@ fn search(
             return (i, best_layout, best_score);
         }
 
-        let mut layout;
-        loop {
-            layout = random_swap(&best_layout);
-            if layout[0].iter().filter(|&&chr| chr == '.' as u8).count() == 5
-                    && !layout[0].contains(&('\'' as u8)) {
-                break;
-            }
-        }
+        let layout = random_swap(&best_layout);
 
         let score = layout_score(ngrams, &layout, false);
         if score > best_score {
@@ -393,20 +388,17 @@ fn main() {
 
         let mut rng = rand::thread_rng();
 
-        let mut not_qxz = b"ABCDEFGHIJKLMNOPRSTUVWY'".clone();
-        assert_eq!(not_qxz.len(), 26 + 1 - 3);
-        not_qxz.shuffle(&mut rng);
-        let mut qxz = b"QXZ.....".clone();
-        qxz.shuffle(&mut rng);
+        let mut every = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ'...".clone();
+        assert_eq!(every.len(), 30);
+        every.shuffle(&mut rng);
 
         flag::register(SIGINT, PLEASE_STOP.clone()).unwrap();
         flag::register(SIGTERM, PLEASE_STOP.clone()).unwrap();
 
         let (attempts, best_layout, best_score) = search_all(&ngrams, 0, &vec![
-            qxz.to_vec(),
-            not_qxz[0..8].to_vec(),
-            not_qxz[8..16].to_vec(),
-            not_qxz[16..24].to_vec(),
+            every[0..COL_COUNT as usize].to_vec(),
+            every[COL_COUNT as usize..2*COL_COUNT as usize].to_vec(),
+            every[2*COL_COUNT as usize..3*COL_COUNT as usize].to_vec(),
         ], &max_attempts);
         println!();
         print_layout(&best_layout);
@@ -422,9 +414,9 @@ fn main() {
         let mut stdin = io::stdin();
         let mut layout = Vec::new();
         let mut b = vec![0];
-        for _ in 0..=3 {
+        for _ in 0..=2 {
             let mut row = Vec::new();
-            for _ in 0..=7 {
+            for _ in 0..=9 {
                 let mut chr;
                 loop {
                     match stdin.read(&mut b) {
