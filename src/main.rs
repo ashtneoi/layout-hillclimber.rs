@@ -4,6 +4,7 @@ use rand::prelude::*;
 use rand::seq::index::sample;
 use signal_hook::consts::signal::{SIGINT, SIGTERM};
 use signal_hook::flag;
+use std::cmp::max;
 use std::collections::HashMap;
 use std::env;
 use std::fs::File;
@@ -96,10 +97,10 @@ fn roll_score(
         let lc;
         if prev_c <= COL_HALF - 1 {
             prev_lc = prev_c;
-            lc = c;
+            lc = max(c, 3);
         } else {
             prev_lc = COL_COUNT - 1 - prev_c;
-            lc = COL_COUNT - 1 - c;
+            lc = max(COL_COUNT - 1 - c, 3);
         }
 
         if lc < prev_lc {
@@ -133,9 +134,9 @@ fn roll_score(
         } else if lc == prev_lc {
             // CSFU
             if lc <= 1 {
-                score -= 6 * count as i64;
+                score -= 10 * count as i64;
             } else {
-                score -= 2 * count as i64;
+                score -= 4 * count as i64;
             }
         } else if lc <= COL_HALF - 1 {
             // inward
