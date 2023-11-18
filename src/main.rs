@@ -58,9 +58,9 @@ static COL_COUNT: isize = 10;
 static COL_HALF: isize = COL_COUNT / 2;
 
 static KEY_TO_STRENGTH: &[&[i64]] = &[
-    &[1, 7, 8, 6, 1, 1, 6, 8, 7, 1],
-    &[6, 9, 10, 9, 5, 5, 9, 10, 9, 6],
-    &[3, 1, 1, 8, 3, 3, 8, 1, 1, 3],
+    &[7, 12, 14, 9, 4, 4, 9, 14, 12, 7],
+    &[12, 16, 20, 16, 7, 7, 16, 20, 16, 12],
+    &[7, 8, 8, 14, 1, 1, 14, 8, 8, 7],
 ];
 
 fn strength_score(
@@ -83,7 +83,10 @@ fn roll_score(
     count: u64,
     char_to_key: &HashMap<char, (usize, usize)>,
 ) -> i64 {
+    let count = count as i64;
     let mut score: i64 = 0;
+
+    let mut same_hand_length = 0;
 
     let mut prev_r: isize = -1;
     let mut prev_c: isize = -1;
@@ -96,82 +99,101 @@ fn roll_score(
         let prev_lc;
         let lc;
         if prev_c <= COL_HALF - 1 {
+            if c >= COL_HALF { // hand swap
+                same_hand_length = 0;
+                continue;
+            }
             prev_lc = prev_c;
-            lc = max(c, 3);
+            lc = c;
         } else {
+            if c <= COL_HALF - 1 { // hand swap
+                same_hand_length = 0;
+                continue;
+            }
             prev_lc = COL_COUNT - 1 - prev_c;
-            lc = max(COL_COUNT - 1 - c, 3);
+            lc = COL_COUNT - 1 - c;
+        }
+        let prev_lf = max(prev_lc, 3);
+        let lf = max(lc, 3);
+        same_hand_length += 1;
+
+        if same_hand_length >= 4 {
+            score -= (same_hand_length - 2) * count;
         }
 
-        if lc < prev_lc {
-            // outward
-            if r == 3 || prev_r == 3 || prev_r == -1 {
+        if lf == prev_lf {
+            if r == prev_r {
                 // nothing
-            } else if prev_r == r {
-                score += 2 * count as i64;
-            } else if prev_r - r == 1 {
-                // up 1
-                score += count as i64;
-            } else if r - prev_r == 1 {
-                // down 1
-                if !(prev_lc == COL_HALF - 1 && lc == 0) {
-                    score += count as i64;
-                }
-            } else if prev_r == 2 && r == 0 {
-                // up 2
-                if prev_lc == COL_HALF - 1 && (lc == 1 || lc == 2) {
-                    // iffy :/
-                    score += count as i64;
-                }
-            } else if prev_r == 0 && r == 2 {
-                // down 2
-                if prev_lc == 2 && lc == 0 {
-                    score += count as i64;
-                }
-            } else {
-                unreachable!("{} {}", r, prev_r);
+            } else if lf == 0 {
+                score -= 4 * count;
+            } else if lf == 1 {
+                score -= 2 * (r - prev_r).abs() * count;
+            } else { // lf == 2 || lf == 3
+                score -= (r - prev_r).abs() * count;
             }
-        } else if lc == prev_lc {
-            // CSFU
-            if lc <= 1 {
-                score -= 10 * count as i64;
-            } else {
-                score -= 4 * count as i64;
+        } else if prev_lf == 0 { // inward roll from pinky
+            if lc == 4 { // lateral stretch
+                if r == prev_r - 2 { // two rows upward
+                    score -= 20 * count;
+                } else if r == prev_r - 1 { // one row upward
+                    score -= 10 * count;
+                } else if r == prev_r + 1 { // one row downward
+                    // nothing
+                } else { // two rows downward
+                    score -= 10 * count;
+                }
+            } else if r == prev_r + 1 { // downward
+                score -= 3 * count;
+            } else if r == prev_r - 1 { // upward
+                score += count;
+            } else if ... {
+                ...
             }
-        } else if lc <= COL_HALF - 1 {
-            // inward
-            if r == 3 || prev_r == 3 || prev_r == -1 {
-                // nothing
-            } else if prev_r == r {
-                score += 3 * count as i64;
-            } else if prev_r - r == 1 {
-                // up 1
-                if !(prev_lc == 0 && lc == COL_HALF - 1) {
-                    score += 2 * count as i64;
+        } else if prev_lf == 1 { // roll from ring
+            if lf == 0 { // outward
+                if r == prev_r + 1 { // downward
+                    // nothing
+                } else if r == prev_r - 1 { // upward
+                    score -= 5 * count;
+                } else { // same row
+                    score += count;
                 }
-            } else if r - prev_r == 1 {
-                // down 1
-                if !(prev_lc == 0 && (lc == 1 || lc == 2)) {
-                    score += 2 * count as i64;
+            } else if lf == 2 { // ring to middle
+                if r == prev_r + 1 { // downward
+                } else if r == prev_r - 1 { // upward
+                } else { // same row
                 }
-            } else if prev_r == 2 && r == 0 {
-                // up 2
-                if prev_lc == 0 && lc == 2 {
-                    // iffy :/
-                    score += count as i64;
+            } else if lf == 3 { // ring to index
+                if lc == 4 { // lateral stretch
                 }
-            } else if prev_r == 0 && r == 2 {
-                // down 2
-                if (prev_lc == 1 || prev_lc == 2) && lc == COL_HALF - 1 {
-                    // also iffy :/
-                    score += count as i64;
-                }
-            } else {
-                unreachable!("{} {}", r, prev_r);
             }
-        } else {
-            // hand switch
-            score += count as i64;
+        } else if prev_lf == 2 { // roll from middle
+            if lf < 2 { // outward
+            } else { // middle to index
+                if lc == 4 { // lateral stretch
+                    if r == prev_r - 2 { // two rows upward
+                    } else if r == prev_r - 1 { // one row upward
+                    } else if r == prev_r + 1 { // one row downward
+                    } else { // two rows downward
+                    }
+                }
+            }
+        } else { // outward roll from index
+            if prev_lc == 4 { // lateral stretch
+                if lf == 0 { // index to pinky
+                    if r == prev_r - 2 { // two rows upward
+                    } else if r == prev_r - 1 { // one row upward
+                    } else if r == prev_r + 1 { // one row downward
+                    } else { // two rows downward
+                    }
+                } else { // index to middle or ring
+                    if r == prev_r - 2 { // two rows upward
+                    } else if r == prev_r - 1 { // one row upward
+                    } else if r == prev_r + 1 { // one row downward
+                    } else { // two rows downward
+                    }
+                }
+            }
         }
 
         prev_r = r;
@@ -226,7 +248,8 @@ fn layout_score(ngrams: &Ngrams, layout: &Layout, print_details: bool) -> i64 {
             rs += roll_score(igram, count, &char_to_key);
         }
     }
-    let bs = balance_score(&ngrams[1], &char_to_key);
+    rs *= 5;
+    let bs = 100 * balance_score(&ngrams[1], &char_to_key);
     if print_details {
         let format = num_format::CustomFormat::builder()
             .grouping(num_format::Grouping::Standard)
@@ -243,7 +266,7 @@ fn layout_score(ngrams: &Ngrams, layout: &Layout, print_details: bool) -> i64 {
         io::stdout().write_formatted(&bs, &format).unwrap();
         print!("\n");
     }
-    3 * ss + 3 * rs + 2000 * bs
+    rs + ss + bs
 }
 
 fn random_swap(layout: &Layout) -> Layout {
@@ -272,7 +295,10 @@ fn random_swap(layout: &Layout) -> Layout {
 
 fn print_layout(layout: &Layout) {
     for row in layout {
-        for &chr in row {
+        for (i, &chr) in row.iter().enumerate() {
+            if i == row.len() / 2 {
+                print!(" ");
+            }
             print!("{}", chr as char);
         }
         print!("\n");
