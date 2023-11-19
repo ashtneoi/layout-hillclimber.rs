@@ -282,14 +282,23 @@ fn print_layout(layout: &Layout) {
     }
 }
 
+// hill-climbing random walk
 fn search(
     ngrams: &Ngrams,
     start_score: i64,
     start_layout: Layout,
     max_attempts: u64,
 ) -> (u64, Layout, i64) {  // (attempts, best layout, best score)
+    let format = num_format::CustomFormat::builder()
+        .grouping(num_format::Grouping::Standard)
+        .separator("_")
+        .build().unwrap();
+
     let mut best_score = start_score;
     let mut best_layout = start_layout;
+
+    io::stdout().write_formatted(&best_score, &format).unwrap();
+    print!("\n");
 
     for i in 0..max_attempts {
         if PLEASE_STOP.load(Ordering::Acquire) {
@@ -302,36 +311,57 @@ fn search(
         if score > best_score {
             best_score = score;
             best_layout = layout;
+            io::stdout().write_formatted(&score, &format).unwrap();
+            print!("\n");
         }
     }
 
     (max_attempts, best_layout, best_score)
 }
 
+#[derive(Debug)]
+enum SearchType {
+    Walk(i64),
+    Peek(i64),
+}
+
+// random peek
 fn search_all(
     ngrams: &Ngrams,
     start_score: i64,
     start_layout: &Layout, // seed layout?
-    max_attempts: &[i64],
+    max_attempts: &[SearchType],
 ) -> (u64, Layout, i64) {  // (attempts, best layout, best_score)
+    use SearchType::*;
+
     if max_attempts.len() == 1 {
-        assert!(max_attempts[0] > 0);
-        return search(
-            ngrams, start_score, start_layout.clone(), max_attempts[0] as u64);
+        if let Walk(ma) = max_attempts[0] {
+            assert!(ma > 0, "last max_attempts is negative, which is stupid");
+            return search(
+                ngrams, start_score, start_layout.clone(), ma as u64);
+        } else {
+            panic!("last max_attempts is Peek(_), which is stupid");
+        }
     }
 
     let mut total_attempts = 0;
     let mut best_score = start_score;
     let mut best_layout = start_layout.clone();
 
-    if max_attempts[0] > 0 {
-        for _ in 0..max_attempts[0] {
+    let ma = match max_attempts[0] { Walk(ma) => ma, Peek(ma) => ma };
+    if ma > 0 {
+        for _ in 0..ma {
             if PLEASE_STOP.load(Ordering::Acquire) {
                 break;
             }
 
-            let (attempts, layout, score) = search_all(
-                ngrams, start_score, &best_layout, &max_attempts[1..]);
+            let (attempts, layout, score) = if let Walk(_) = max_attempts[0] {
+                search_all(
+                    ngrams, best_score, &best_layout, &max_attempts[1..])
+            } else { // Peek
+                search_all(
+                    ngrams, start_score, &start_layout, &max_attempts[1..])
+            };
             total_attempts += attempts;
             if score > best_score {
                 best_score = score;
@@ -345,9 +375,12 @@ fn search_all(
             print!("\n");
         }
     } else {
+        if let Walk(_) = max_attempts[0] {
+            panic!();
+        }
         crossbeam::scope(|scope| {
             let mut children = Vec::new();
-            for _ in 0..max_attempts[0].abs() {
+            for _ in 0..ma.abs() {
                 children.push(scope.spawn(|_| {
                     search_all(
                         ngrams, start_score, start_layout, &max_attempts[1..])
@@ -369,6 +402,7 @@ fn search_all(
                 print!("\n");
             }
         }).unwrap();
+
     }
 
     (total_attempts, best_layout, best_score)
@@ -387,8 +421,13 @@ fn main() {
         let nmax = args.next().unwrap().parse().unwrap();
         let ngrams = get_ngrams(nmax);
 
-        let max_attempts: Vec<i64> =
-            args.map(|x| x.parse().unwrap()).collect();
+        let max_attempts: Vec<SearchType> = args.map(|x| {
+            if x.ends_with(".") {
+                SearchType::Peek(x[..x.len() - ".".len()].parse().unwrap())
+            } else {
+                SearchType::Walk(x.parse().unwrap())
+            }
+        }).collect();
 
         let mut rng = rand::thread_rng();
 
