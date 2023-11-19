@@ -119,7 +119,7 @@ fn roll_score_delta(
         ],
     ];
 
-    table[(r - prev_r + 2) as usize][prev_lc as usize][lc as usize]
+    table[(r - prev_r + 2) as usize][prev_lc as usize][lc as usize] + 2
 }
 
 fn roll_score(
@@ -134,6 +134,8 @@ fn roll_score(
 
     let mut prev_r: isize = -1;
     let mut prev_c: isize = -1;
+    let mut other_prev_r: isize = -1;
+    let mut other_prev_c: isize = -1;
     for chr in ngram.chars() {
         let chr = chr as char;
         let (r, c) = char_to_key[&chr];
@@ -145,6 +147,8 @@ fn roll_score(
         if prev_c <= COL_HALF - 1 {
             if c >= COL_HALF { // hand swap
                 same_hand_length = 0;
+                (prev_r, other_prev_r) = (other_prev_r, prev_r);
+                (prev_c, other_prev_c) = (other_prev_c, prev_c);
                 continue;
             }
             prev_lc = prev_c;
@@ -152,6 +156,8 @@ fn roll_score(
         } else {
             if c <= COL_HALF - 1 { // hand swap
                 same_hand_length = 0;
+                (prev_r, other_prev_r) = (other_prev_r, prev_r);
+                (prev_c, other_prev_c) = (other_prev_c, prev_c);
                 continue;
             }
             prev_lc = COL_COUNT - 1 - prev_c;
