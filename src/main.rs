@@ -4,7 +4,6 @@ use rand::prelude::*;
 use rand::seq::index::sample;
 use signal_hook::consts::signal::{SIGINT, SIGTERM};
 use signal_hook::flag;
-use std::cmp::max;
 use std::collections::HashMap;
 use std::env;
 use std::fs::File;
@@ -78,6 +77,51 @@ fn strength_score(
     score
 }
 
+fn roll_score_delta(
+    r: isize, prev_r: isize,
+    lc: isize, prev_lc: isize,
+) -> i64 {
+    let table = &[
+        [ // up 2
+            [-6, -3, 0, -1, -4], // pinky -> ?
+            [-2, -4, 0, -2, -5], // ring -> ?
+            [-1, -3, -3, -1, -3], // middle -> ?
+            [-1, -2, -1, -3, -6], // index -> ?
+            [-1, -2, -3, -6, -5], // stretched index -> ?
+        ],
+        [ // up 1
+            [-4, -1, -1, -1, -3], // pinky -> ?
+            [-1, -3, 1, 0, -3], // ring -> ?
+            [0, -2, -2, -1, -2], // middle -> ?
+            [1, -1, 0, -1, -1], // index -> ?
+            [-1, -3, -4, -3, -3], // stretched index -> ?
+        ],
+        [ // level
+            [0, 2, 2, 3, -1], // pinky -> ?
+            [1, 0, 2, 2, -2], // ring -> ?
+            [1, 1, 0, 2, -3], // middle -> ?
+            [1, 1, 2, 0, -1], // index -> ?
+            [0, -2, -2, -1, 0], // stretched index -> ?
+        ],
+        [ // down 1
+            [-3, -2, -1, -1, -2], // pinky -> ?
+            [-1, -2, -1, 2, -4], // ring -> ?
+            [1, 0, -2, 1, -2], // middle -> ?
+            [-1, -2, -2, -1, -3], // index -> ?
+            [-1, -3, -3, -3, -2], // stretched index -> ?
+        ],
+        [ // down 2
+            [-6, -5, -5, -1, -3], // pinky -> ?
+            [-4, -5, -4, -2, -4], // ring -> ?
+            [-3, -2, -4, -2, -4], // middle -> ?
+            [-1, -3, -3, -2, -3], // index -> ?
+            [-6, -6, -5, -3, -4], // stretched index -> ?
+        ],
+    ];
+
+    table[(r - prev_r + 2) as usize][prev_lc as usize][lc as usize]
+}
+
 fn roll_score(
     ngram: &str,
     count: u64,
@@ -113,87 +157,14 @@ fn roll_score(
             prev_lc = COL_COUNT - 1 - prev_c;
             lc = COL_COUNT - 1 - c;
         }
-        let prev_lf = max(prev_lc, 3);
-        let lf = max(lc, 3);
         same_hand_length += 1;
 
-        if same_hand_length >= 4 {
-            score -= (same_hand_length - 2) * count;
+        if same_hand_length >= 3 {
+            score -= 4 * (same_hand_length - 2) * count;
         }
 
-        if lf == prev_lf {
-            if r == prev_r {
-                // nothing
-            } else if lf == 0 {
-                score -= 4 * count;
-            } else if lf == 1 {
-                score -= 2 * (r - prev_r).abs() * count;
-            } else { // lf == 2 || lf == 3
-                score -= (r - prev_r).abs() * count;
-            }
-        } else if prev_lf == 0 { // inward roll from pinky
-            if lc == 4 { // lateral stretch
-                if r == prev_r - 2 { // two rows upward
-                    score -= 20 * count;
-                } else if r == prev_r - 1 { // one row upward
-                    score -= 10 * count;
-                } else if r == prev_r + 1 { // one row downward
-                    // nothing
-                } else { // two rows downward
-                    score -= 10 * count;
-                }
-            } else if r == prev_r + 1 { // downward
-                score -= 3 * count;
-            } else if r == prev_r - 1 { // upward
-                score += count;
-            } else if ... {
-                ...
-            }
-        } else if prev_lf == 1 { // roll from ring
-            if lf == 0 { // outward
-                if r == prev_r + 1 { // downward
-                    // nothing
-                } else if r == prev_r - 1 { // upward
-                    score -= 5 * count;
-                } else { // same row
-                    score += count;
-                }
-            } else if lf == 2 { // ring to middle
-                if r == prev_r + 1 { // downward
-                } else if r == prev_r - 1 { // upward
-                } else { // same row
-                }
-            } else if lf == 3 { // ring to index
-                if lc == 4 { // lateral stretch
-                }
-            }
-        } else if prev_lf == 2 { // roll from middle
-            if lf < 2 { // outward
-            } else { // middle to index
-                if lc == 4 { // lateral stretch
-                    if r == prev_r - 2 { // two rows upward
-                    } else if r == prev_r - 1 { // one row upward
-                    } else if r == prev_r + 1 { // one row downward
-                    } else { // two rows downward
-                    }
-                }
-            }
-        } else { // outward roll from index
-            if prev_lc == 4 { // lateral stretch
-                if lf == 0 { // index to pinky
-                    if r == prev_r - 2 { // two rows upward
-                    } else if r == prev_r - 1 { // one row upward
-                    } else if r == prev_r + 1 { // one row downward
-                    } else { // two rows downward
-                    }
-                } else { // index to middle or ring
-                    if r == prev_r - 2 { // two rows upward
-                    } else if r == prev_r - 1 { // one row upward
-                    } else if r == prev_r + 1 { // one row downward
-                    } else { // two rows downward
-                    }
-                }
-            }
+        if prev_r != -1 {
+            score += count * roll_score_delta(r, prev_r, lc, prev_lc);
         }
 
         prev_r = r;
@@ -248,8 +219,8 @@ fn layout_score(ngrams: &Ngrams, layout: &Layout, print_details: bool) -> i64 {
             rs += roll_score(igram, count, &char_to_key);
         }
     }
-    rs *= 5;
-    let bs = 100 * balance_score(&ngrams[1], &char_to_key);
+    rs *= 6;
+    let bs = 50 * balance_score(&ngrams[1], &char_to_key);
     if print_details {
         let format = num_format::CustomFormat::builder()
             .grouping(num_format::Grouping::Standard)
