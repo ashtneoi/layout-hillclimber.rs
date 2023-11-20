@@ -151,19 +151,23 @@ fn roll_score(
                 same_hand_length = 0;
                 (prev_r, other_prev_r) = (other_prev_r, prev_r);
                 (prev_c, other_prev_c) = (other_prev_c, prev_c);
-                continue;
+                prev_lc = COL_COUNT - 1 - prev_c;
+                lc = COL_COUNT - 1 - c;
+            } else {
+                prev_lc = prev_c;
+                lc = c;
             }
-            prev_lc = prev_c;
-            lc = c;
         } else {
             if c <= COL_HALF - 1 { // hand swap
                 same_hand_length = 0;
                 (prev_r, other_prev_r) = (other_prev_r, prev_r);
                 (prev_c, other_prev_c) = (other_prev_c, prev_c);
-                continue;
+                prev_lc = prev_c;
+                lc = c;
+            } else {
+                prev_lc = COL_COUNT - 1 - prev_c;
+                lc = COL_COUNT - 1 - c;
             }
-            prev_lc = COL_COUNT - 1 - prev_c;
-            lc = COL_COUNT - 1 - c;
         }
         same_hand_length += 1;
 
@@ -172,7 +176,8 @@ fn roll_score(
         }
 
         if prev_r != -1 {
-            score += count * roll_score_delta(r, prev_r, lc, prev_lc);
+            let shift = if same_hand_length == 0 { 1 } else { 0 };
+            score += (count * roll_score_delta(r, prev_r, lc, prev_lc)) >> shift;
         }
 
         prev_r = r;
