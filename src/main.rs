@@ -17,6 +17,44 @@ type Ngrams = Vec<Vec<(String, u64)>>;
 
 lazy_static! {
     static ref PLEASE_STOP: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
+
+    static ref ROLL_TABLE: [[[i64; 5]; 5]; 5] = [
+        [ // up 2
+            [-6, -3, 0, -1, -4], // pinky -> ?
+            [-2, -4, 0, -2, -5], // ring -> ?
+            [-1, -3, -3, -1, -3], // middle -> ?
+            [-1, -2, -1, -3, -6], // index -> ?
+            [-1, -2, -3, -6, -5], // stretched index -> ?
+        ],
+        [ // up 1
+            [-4, -1, -1, -1, -3], // pinky -> ?
+            [-1, -3, 1, 0, -3], // ring -> ?
+            [0, -2, -2, -1, -2], // middle -> ?
+            [1, -1, 0, -1, -1], // index -> ?
+            [-1, -3, -4, -3, -3], // stretched index -> ?
+        ],
+        [ // level
+            [0, 2, 2, 3, -1], // pinky -> ?
+            [1, 0, 2, 2, -2], // ring -> ?
+            [1, 1, 0, 2, -3], // middle -> ?
+            [1, 1, 2, 0, -1], // index -> ?
+            [0, -2, -2, -1, 0], // stretched index -> ?
+        ],
+        [ // down 1
+            [-3, -2, -1, -1, -2], // pinky -> ?
+            [-1, -2, -1, 2, -4], // ring -> ?
+            [1, 0, -2, 1, -2], // middle -> ?
+            [-1, -2, -2, -1, -3], // index -> ?
+            [-1, -3, -3, -3, -2], // stretched index -> ?
+        ],
+        [ // down 2
+            [-6, -5, -5, -1, -3], // pinky -> ?
+            [-4, -5, -4, -2, -4], // ring -> ?
+            [-3, -2, -4, -2, -4], // middle -> ?
+            [-1, -3, -3, -2, -3], // index -> ?
+            [-6, -6, -5, -3, -4], // stretched index -> ?
+        ],
+    ];
 }
 
 fn get_ngrams(maxlen: usize) -> Ngrams {
@@ -81,45 +119,9 @@ fn roll_score_delta(
     r: isize, prev_r: isize,
     lc: isize, prev_lc: isize,
 ) -> i64 {
-    let table = &[
-        [ // up 2
-            [-6, -3, 0, -1, -4], // pinky -> ?
-            [-2, -4, 0, -2, -5], // ring -> ?
-            [-1, -3, -3, -1, -3], // middle -> ?
-            [-1, -2, -1, -3, -6], // index -> ?
-            [-1, -2, -3, -6, -5], // stretched index -> ?
-        ],
-        [ // up 1
-            [-4, -1, -1, -1, -3], // pinky -> ?
-            [-1, -3, 1, 0, -3], // ring -> ?
-            [0, -2, -2, -1, -2], // middle -> ?
-            [1, -1, 0, -1, -1], // index -> ?
-            [-1, -3, -4, -3, -3], // stretched index -> ?
-        ],
-        [ // level
-            [0, 2, 2, 3, -1], // pinky -> ?
-            [1, 0, 2, 2, -2], // ring -> ?
-            [1, 1, 0, 2, -3], // middle -> ?
-            [1, 1, 2, 0, -1], // index -> ?
-            [0, -2, -2, -1, 0], // stretched index -> ?
-        ],
-        [ // down 1
-            [-3, -2, -1, -1, -2], // pinky -> ?
-            [-1, -2, -1, 2, -4], // ring -> ?
-            [1, 0, -2, 1, -2], // middle -> ?
-            [-1, -2, -2, -1, -3], // index -> ?
-            [-1, -3, -3, -3, -2], // stretched index -> ?
-        ],
-        [ // down 2
-            [-6, -5, -5, -1, -3], // pinky -> ?
-            [-4, -5, -4, -2, -4], // ring -> ?
-            [-3, -2, -4, -2, -4], // middle -> ?
-            [-1, -3, -3, -2, -3], // index -> ?
-            [-6, -6, -5, -3, -4], // stretched index -> ?
-        ],
-    ];
-
-    table[(r - prev_r + 2) as usize][prev_lc as usize][lc as usize] + 2
+    ROLL_TABLE[(r - prev_r + 2) as usize][prev_lc as usize][lc as usize]
+        - if (r - prev_r).abs() == 2 { 2 } else { 0 }
+        + 2
 }
 
 fn roll_score(
