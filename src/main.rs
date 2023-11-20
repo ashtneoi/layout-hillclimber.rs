@@ -368,7 +368,6 @@ fn search_all(
                 best_layout = layout;
             }
 
-            println!();
             for _ in 1..max_attempts.len() {
                 print!("<");
             }
@@ -395,7 +394,6 @@ fn search_all(
                     best_layout = layout;
                 }
 
-                println!();
                 for _ in 1..max_attempts.len() {
                     print!("<");
                 }
@@ -408,6 +406,44 @@ fn search_all(
     (total_attempts, best_layout, best_score)
 }
 
+fn read_layout() -> Vec<Vec<u8>> {
+    let mut stdin = io::stdin();
+    let mut layout = Vec::new();
+    let mut b = vec![0];
+    for _ in 0..=2 {
+        let mut row = Vec::new();
+        for _ in 0..=9 {
+            let mut chr;
+            loop {
+                match stdin.read(&mut b) {
+                    Ok(count) if count == 0 => {
+                        eprintln!("Error: unexpected end of file");
+                        exit(1);
+                    },
+                    Ok(_) => {
+                        chr = b[0] as char;
+                        if let 'A'..='Z' | 'a'..='z' | '\'' | '.' = chr {
+                            chr.make_ascii_uppercase();
+                            break;
+                        } else if let '-' | '_' = chr {
+                            chr = '.';
+                            break;
+                        }
+                    },
+                    Err(e) if e.kind() == ErrorKind::Interrupted => (),
+                    Err(e) => {
+                        eprintln!("Error: {}", &e);
+                        exit(1);
+                    },
+                }
+            }
+            row.push(chr as u8);
+        }
+        layout.push(row);
+    }
+    layout
+}
+
 fn main() {
     let format = num_format::CustomFormat::builder()
         .grouping(num_format::Grouping::Standard)
@@ -417,7 +453,7 @@ fn main() {
     let mut args = env::args().skip(1);
 
     let cmd = args.next().unwrap();
-    if cmd == "search" {
+    if cmd == "search" || cmd == "continue" {
         let nmax = args.next().unwrap().parse().unwrap();
         let ngrams = get_ngrams(nmax);
 
@@ -431,18 +467,35 @@ fn main() {
 
         let mut rng = rand::thread_rng();
 
-        let mut every = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ'...".clone();
-        assert_eq!(every.len(), 30);
-        every.shuffle(&mut rng);
+        let start_layout;
+        if cmd == "search" {
+            let mut every = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ'...".clone();
+            assert_eq!(every.len(), 30);
+            every.shuffle(&mut rng);
+
+            start_layout = vec![
+                every[0..COL_COUNT as usize].to_vec(),
+                every[COL_COUNT as usize..2*COL_COUNT as usize].to_vec(),
+                every[2*COL_COUNT as usize..3*COL_COUNT as usize].to_vec(),
+            ];
+        } else {
+            start_layout = read_layout();
+        }
+
+        let start_score = layout_score(&ngrams, &start_layout, false);
+
+        if cmd == "continue" {
+            println!("Continuing from this layout:");
+            print_layout(&start_layout);
+            io::stdout().write_formatted(&start_score, &format).unwrap();
+            print!("\n");
+            println!();
+        }
 
         flag::register(SIGINT, PLEASE_STOP.clone()).unwrap();
         flag::register(SIGTERM, PLEASE_STOP.clone()).unwrap();
 
-        let (attempts, best_layout, best_score) = search_all(&ngrams, 0, &vec![
-            every[0..COL_COUNT as usize].to_vec(),
-            every[COL_COUNT as usize..2*COL_COUNT as usize].to_vec(),
-            every[2*COL_COUNT as usize..3*COL_COUNT as usize].to_vec(),
-        ], &max_attempts);
+        let (attempts, best_layout, best_score) = search_all(&ngrams, start_score, &start_layout, &max_attempts);
         println!();
         print_layout(&best_layout);
         layout_score(&ngrams, &best_layout, true);
@@ -454,40 +507,7 @@ fn main() {
         let nmax = args.next().unwrap().parse().unwrap();
         let ngrams = get_ngrams(nmax);
 
-        let mut stdin = io::stdin();
-        let mut layout = Vec::new();
-        let mut b = vec![0];
-        for _ in 0..=2 {
-            let mut row = Vec::new();
-            for _ in 0..=9 {
-                let mut chr;
-                loop {
-                    match stdin.read(&mut b) {
-                        Ok(count) if count == 0 => {
-                            eprintln!("Error: unexpected end of file");
-                            exit(1);
-                        },
-                        Ok(_) => {
-                            chr = b[0] as char;
-                            if let 'A'..='Z' | 'a'..='z' | '\'' | '.' = chr {
-                                chr.make_ascii_uppercase();
-                                break;
-                            } else if let '-' | '_' = chr {
-                                chr = '.';
-                                break;
-                            }
-                        },
-                        Err(e) if e.kind() == ErrorKind::Interrupted => (),
-                        Err(e) => {
-                            eprintln!("Error: {}", &e);
-                            exit(1);
-                        },
-                    }
-                }
-                row.push(chr as u8);
-            }
-            layout.push(row);
-        }
+        let layout = read_layout();
 
         print_layout(&layout);
         let score = layout_score(&ngrams, &layout, true);
