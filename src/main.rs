@@ -428,6 +428,9 @@ fn read_layout() -> Vec<Vec<u8>> {
                         } else if let '-' | '_' = chr {
                             chr = '.';
                             break;
+                        } else if !chr.is_ascii_whitespace() {
+                            chr = '.';
+                            break;
                         }
                     },
                     Err(e) if e.kind() == ErrorKind::Interrupted => (),
