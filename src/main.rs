@@ -57,7 +57,6 @@ lazy_static! {
     ];
 }
 
-// FIXME: we're double-counting words, because an n-gram can be a subword (and thus n-grams can intersect)
 fn get_ngrams(maxlen: usize) -> Ngrams {
     let mut n = vec![vec![]];
     let f = File::open("ngrams-all.tsv").unwrap();
@@ -68,21 +67,21 @@ fn get_ngrams(maxlen: usize) -> Ngrams {
             lines.read_line(&mut line).unwrap();
         }
         assert!(!line.is_empty());
-        let fields: Vec<_> = line.splitn(3, '\t').collect();
+        let fields: Vec<_> = line.splitn(4, '\t').collect();
         let kind = fields[0];
-        let splats = fields[1];
+        let splats = fields[2];
         assert_eq!(kind, &format!("{}-gram", i));
-        assert_eq!(splats, "*/*");
+        assert_eq!(splats, &format!("{}/*", i));
         line.clear();
         let mut igrams = Vec::new();
         while lines.read_line(&mut line).unwrap() > 0 {
-            let fields: Vec<_> = line.splitn(3, '\t').collect();
+            let fields: Vec<_> = line.splitn(4, '\t').collect();
             let igram = fields[0];
             if igram.ends_with("-gram") {
                 // Don't clear line (it's the next header).
                 break;
             }
-            let count = fields[1];
+            let count = fields[2];
             igrams.push((igram.to_string(), count.parse().unwrap()));
             line.clear();
         }
