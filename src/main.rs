@@ -57,6 +57,7 @@ lazy_static! {
     ];
 }
 
+// FIXME: we're double-counting words, because an n-gram can be a subword (and thus n-grams can intersect)
 fn get_ngrams(maxlen: usize) -> Ngrams {
     let mut n = vec![vec![]];
     let f = File::open("ngrams-all.tsv").unwrap();
