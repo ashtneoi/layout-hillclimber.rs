@@ -233,7 +233,7 @@ fn layout_score(ngrams: &Ngrams, layout: &Layout, print_details: bool) -> i64 {
         }
     }
     rs *= 6;
-    let bs = 500 * balance_score(&ngrams[1], &char_to_key);
+    let bs = 50 * balance_score(&ngrams[1], &char_to_key);
     if print_details {
         let format = num_format::CustomFormat::builder()
             .grouping(num_format::Grouping::Standard)
