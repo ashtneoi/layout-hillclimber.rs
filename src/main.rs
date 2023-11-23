@@ -17,45 +17,50 @@ type Ngrams = Vec<Vec<(String, u64)>>;
 
 lazy_static! {
     static ref PLEASE_STOP: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
-
-    static ref ROLL_TABLE: [[[i64; 5]; 5]; 5] = [
-        [ // up 2
-            [-6, -3, 0, -1, -4], // pinky -> ?
-            [-2, -4, 0, -2, -5], // ring -> ?
-            [-1, -3, -3, -1, -3], // middle -> ?
-            [-1, -2, -1, -3, -6], // index -> ?
-            [-1, -2, -3, -6, -5], // stretched index -> ?
-        ],
-        [ // up 1
-            [-4, -1, -1, -1, -3], // pinky -> ?
-            [-1, -3, 1, 0, -3], // ring -> ?
-            [0, -2, -2, -1, -2], // middle -> ?
-            [1, -1, 0, -1, -1], // index -> ?
-            [-1, -3, -4, -3, -3], // stretched index -> ?
-        ],
-        [ // level
-            [0, 2, 2, 3, -1], // pinky -> ?
-            [1, 0, 2, 2, -2], // ring -> ?
-            [1, 1, 0, 2, -3], // middle -> ?
-            [1, 1, 2, 0, -1], // index -> ?
-            [0, -2, -2, -1, 0], // stretched index -> ?
-        ],
-        [ // down 1
-            [-3, -2, -1, -1, -2], // pinky -> ?
-            [-1, -2, -1, 2, -4], // ring -> ?
-            [1, 0, -2, 1, -2], // middle -> ?
-            [-1, -2, -2, -1, -3], // index -> ?
-            [-1, -3, -3, -3, -2], // stretched index -> ?
-        ],
-        [ // down 2
-            [-6, -5, -5, -1, -3], // pinky -> ?
-            [-4, -5, -4, -2, -4], // ring -> ?
-            [-3, -2, -4, -2, -4], // middle -> ?
-            [-1, -3, -3, -2, -3], // index -> ?
-            [-6, -6, -5, -3, -4], // stretched index -> ?
-        ],
-    ];
 }
+
+// -2 = painful or very slow
+// -1 = unpleasant or slow
+// 0 = neutral
+// 1 = fast and comfortable
+// 2 = very fast and comfortable
+static ROLL_TABLE: &'static [[[i64; 5]; 5]; 5] = &[
+    [ // up 2
+        [-2, -2, 0, -1, -1], // pinky -> ?
+        [-2, -2, -1, -2, -2], // ring -> ?
+        [-2, -2, -2, -1, -2], // middle -> ?
+        [-1, -2, -1, -2, -2], // index -> ?
+        [-2, -2, -2, -2, -2], // stretched index -> ?
+    ],
+    [ // up 1
+        [-2, 0, 0, 0, -1], // pinky -> ?
+        [-1, -1, 1, 0, -2], // ring -> ?
+        [-1, -1, -1, -1, -2], // middle -> ?
+        [0, 0, 1, -1, -1], // index -> ?
+        [-1, -2, -2, -2, -2], // stretched index -> ?
+    ],
+    [ // level
+        [0, 2, 2, 2, 0], // pinky -> ?
+        [1, 0, 2, 2, -2], // ring -> ?
+        [1, 1, 0, 2, -2], // middle -> ?
+        [1, 1, 2, 0, -1], // index -> ?
+        [0, -2, -2, -1, 0], // stretched index -> ?
+    ],
+    [ // down 1
+        [-2, -2, -1, 0, -2], // pinky -> ?
+        [-1, -2, -1, 2, -2], // ring -> ?
+        [1, 0, -1, 2, -2], // middle -> ?
+        [0, -1, -1, -1, -2], // index -> ?
+        [-1, -2, -2, -2, -2], // stretched index -> ?
+    ],
+    [ // down 2
+        [-2, -2, -2, -1, -2], // pinky -> ?
+        [-2, -2, -2, -2, -2], // ring -> ?
+        [0, -2, -2, -1, -2], // middle -> ?
+        [-1, -2, -2, -2, -2], // index -> ?
+        [-2, -2, -2, -2, -2], // stretched index -> ?
+    ],
+];
 
 fn get_ngrams(maxlen: usize) -> Ngrams {
     let mut n = vec![vec![]];
@@ -95,9 +100,9 @@ static COL_COUNT: isize = 10;
 static COL_HALF: isize = COL_COUNT / 2;
 
 static KEY_TO_STRENGTH: &[&[i64]] = &[
-    &[7, 12, 14, 9, 4, 4, 9, 14, 12, 7],
-    &[12, 16, 20, 16, 7, 7, 16, 20, 16, 12],
-    &[7, 8, 8, 14, 1, 1, 14, 8, 8, 7],
+    &[4, 12, 14, 9, 4, 4, 9, 14, 12, 4],
+    &[10, 16, 20, 16, 7, 7, 16, 20, 16, 10],
+    &[4, 8, 8, 14, 1, 1, 14, 8, 8, 4],
 ];
 
 fn strength_score(
@@ -226,14 +231,15 @@ fn layout_score(ngrams: &Ngrams, layout: &Layout, print_details: bool) -> i64 {
     for &(ref igram, count) in &ngrams[1] {
         ss += strength_score(igram, count, &char_to_key);
     }
+    ss *= 5;
     let mut rs = 0;
     for igrams in &ngrams[2..] {
         for &(ref igram, count) in igrams {
             rs += roll_score(igram, count, &char_to_key);
         }
     }
-    rs *= 6;
-    let bs = 50 * balance_score(&ngrams[1], &char_to_key);
+    rs *= 1;
+    let bs = 70 * balance_score(&ngrams[1], &char_to_key);
     if print_details {
         let format = num_format::CustomFormat::builder()
             .grouping(num_format::Grouping::Standard)
