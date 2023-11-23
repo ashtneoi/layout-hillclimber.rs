@@ -336,6 +336,7 @@ fn search(
 enum SearchType {
     Walk(i64),
     Peek(i64),
+    Disturb(i64),
 }
 
 // random peek
@@ -357,23 +358,31 @@ fn search_all(
         }
     }
 
+    if let Disturb(ma) = max_attempts[0] {
+        let mut disturbed_layout = start_layout.clone();
+        for _ in 0..ma {
+            let new_layout = random_swap(&disturbed_layout);
+            disturbed_layout = new_layout;
+        }
+        return search_all(
+            ngrams, layout_score(ngrams, &disturbed_layout, false), &disturbed_layout, &max_attempts[1..]);
+    }
+
     let mut total_attempts = 0;
     let mut best_score = start_score;
     let mut best_layout = start_layout.clone();
 
-    let ma = match max_attempts[0] { Walk(ma) => ma, Peek(ma) => ma };
+    let ma = match max_attempts[0] { Walk(ma) => ma, Peek(ma) => ma, Disturb(_) => panic!() };
     if ma > 0 {
         for _ in 0..ma {
             if PLEASE_STOP.load(Ordering::Acquire) {
                 break;
             }
 
-            let (attempts, layout, score) = if let Walk(_) = max_attempts[0] {
-                search_all(
-                    ngrams, best_score, &best_layout, &max_attempts[1..])
-            } else { // Peek
-                search_all(
-                    ngrams, start_score, &start_layout, &max_attempts[1..])
+            let (attempts, layout, score) = match max_attempts[0] {
+                Walk(_) => search_all(ngrams, best_score, &best_layout, &max_attempts[1..]),
+                Peek(_) => search_all(ngrams, start_score, &start_layout, &max_attempts[1..]),
+                _ => panic!(),
             };
             total_attempts += attempts;
             if score > best_score {
@@ -387,8 +396,10 @@ fn search_all(
             print!("\n");
         }
     } else {
-        if let Walk(_) = max_attempts[0] {
-            panic!();
+        match max_attempts[0] {
+            Walk(_) => panic!(),
+            Disturb(_) => panic!(),
+            _ => (),
         }
         crossbeam::scope(|scope| {
             let mut children = Vec::new();
@@ -476,6 +487,8 @@ fn main() {
         let max_attempts: Vec<SearchType> = args.map(|x| {
             if x.ends_with(".") {
                 SearchType::Peek(x[..x.len() - ".".len()].parse().unwrap())
+            } else if x.ends_with("-") {
+                SearchType::Disturb(x[..x.len() - "-".len()].parse().unwrap())
             } else {
                 SearchType::Walk(x.parse().unwrap())
             }
