@@ -349,7 +349,7 @@ fn search_all(
 
     if max_attempts.len() == 1 {
         if let Walk(ma) = max_attempts[0] {
-            assert!(ma > 0, "last max_attempts is negative, which is stupid");
+            assert!(ma > 0, "last max_attempts is negative or zero, which is stupid");
             return search(
                 ngrams, start_score, start_layout.clone(), ma as u64);
         } else {
