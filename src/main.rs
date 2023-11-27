@@ -24,7 +24,7 @@ lazy_static! {
 // 0 = neutral
 // 1 = fast and comfortable
 // 2 = very fast and comfortable
-static ROLL_TABLE: &'static [[[i64; 5]; 5]; 5] = &[
+static MOVEMENT_TABLE: &'static [[[i64; 5]; 5]; 5] = &[
     [ // up 2
         [-2, -2, 0, -1, -1], // pinky -> ?
         [-2, -2, -1, -2, -2], // ring -> ?
@@ -96,8 +96,8 @@ fn get_ngrams(maxlen: usize) -> Ngrams {
     n
 }
 
-static COL_COUNT: isize = 10;
-static COL_HALF: isize = COL_COUNT / 2;
+static COL_COUNT: usize = 10;
+static COL_HALF: usize = COL_COUNT / 2;
 
 static KEY_TO_STRENGTH: &[&[i64]] = &[
     &[6, 12, 14, 10, 8, 4, 10, 14, 12, 6],
@@ -120,76 +120,68 @@ fn strength_score(
     score
 }
 
-fn roll_score_delta(
-    r: isize, prev_r: isize,
-    lc: isize, prev_lc: isize,
+fn finger_score_delta(
+    r: usize, prev_r: usize,
+    lc: usize, prev_lc: usize,
 ) -> i64 {
-    ROLL_TABLE[(r - prev_r + 2) as usize][prev_lc as usize][lc as usize]
-        - if (r - prev_r).abs() == 2 { 2 } else { 0 }
+    MOVEMENT_TABLE[(r - prev_r + 2) as usize][prev_lc as usize][lc as usize]
+        - if (r as isize - prev_r as isize).abs() == 2 { 2 } else { 0 }
         + 2
 }
 
-fn roll_score(
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum Hand { Left, Right }
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct LKey {
+    row: usize,
+    lcol: usize,
+}
+
+fn movement_score(
     ngram: &str,
     count: u64,
     char_to_key: &HashMap<char, (usize, usize)>,
-) -> i64 {
+) -> (i64, i64) {
     let count = count as i64;
-    let mut score: i64 = 0;
+    let mut finger_score: i64 = 0;
+    let mut cshu_score: i64 = 0;
 
-    let mut same_hand_length = 0;
-
-    let mut prev_r: isize = -1;
-    let mut prev_c: isize = -1;
-    let mut other_prev_r: isize = -1;
-    let mut other_prev_c: isize = -1;
+    let mut other_prev_lk: Option<LKey> = None;
+    let mut prev_lk: Option<LKey> = None;
+    let mut prev_hand: Option<Hand> = None;
+    let mut cshu: u32 = 0;
     for chr in ngram.chars() {
         let chr = chr as char;
         let (r, c) = char_to_key[&chr];
-        let r = r as isize;
-        let c = c as isize;
-
-        let prev_lc;
-        let lc;
-        if prev_c <= COL_HALF - 1 {
-            if c >= COL_HALF { // hand swap
-                same_hand_length = 0;
-                (prev_r, other_prev_r) = (other_prev_r, prev_r);
-                (prev_c, other_prev_c) = (other_prev_c, prev_c);
-                prev_lc = COL_COUNT - 1 - prev_c;
-                lc = COL_COUNT - 1 - c;
-            } else {
-                prev_lc = prev_c;
-                lc = c;
-            }
+        let (hand, lk) = if c <= COL_HALF - 1 {
+            (Hand::Left, LKey { row: r, lcol: c })
         } else {
-            if c <= COL_HALF - 1 { // hand swap
-                same_hand_length = 0;
-                (prev_r, other_prev_r) = (other_prev_r, prev_r);
-                (prev_c, other_prev_c) = (other_prev_c, prev_c);
-                prev_lc = prev_c;
-                lc = c;
-            } else {
-                prev_lc = COL_COUNT - 1 - prev_c;
-                lc = COL_COUNT - 1 - c;
-            }
-        }
-        same_hand_length += 1;
+            (Hand::Right, LKey { row: r, lcol: COL_COUNT - 1 - c })
+        };
 
-        if same_hand_length >= 3 {
-            score -= 4 * (same_hand_length - 2) * count;
+        let shift;
+        if prev_hand.is_some_and(|ph| ph == hand) {
+            shift = 0;
+        } else {
+            shift = cshu;
+            cshu = 0;
+            (other_prev_lk, prev_lk) = (prev_lk, other_prev_lk);
         }
 
-        if prev_r != -1 {
-            let shift = if same_hand_length == 0 { 1 } else { 0 };
-            score += (count * roll_score_delta(r, prev_r, lc, prev_lc)) >> shift;
+        if let Some(plk) = prev_lk {
+            finger_score += (count * finger_score_delta(lk.row, plk.row, lk.lcol, plk.lcol)) >> shift;
         }
 
-        prev_r = r;
-        prev_c = c;
+        prev_lk = Some(lk);
+        prev_hand = Some(hand);
+        cshu += 1;
+        if cshu >= 3 {
+            cshu_score += count * (1 << (cshu - 3));
+        }
     }
 
-    score
+    (finger_score, cshu_score)
 }
 
 fn balance_score(
@@ -201,7 +193,7 @@ fn balance_score(
     for &(ref g, count) in letters {
         let chr = g.chars().next().unwrap();
         let (_, c) = char_to_key[&chr];
-        if c <= COL_HALF as usize - 1 {
+        if c <= COL_HALF - 1 {
             left_sum += count as i64;
         } else {
             right_sum += count as i64;
@@ -232,22 +224,32 @@ fn layout_score(ngrams: &Ngrams, layout: &Layout, print_details: bool) -> i64 {
         ss += strength_score(igram, count, &char_to_key);
     }
     ss *= 5;
-    let mut rs = 0;
+
+    let mut fs = 0;
+    let mut hs = 0;
     for igrams in &ngrams[2..] {
         for &(ref igram, count) in igrams {
-            rs += roll_score(igram, count, &char_to_key);
+            let (fs_delta, hs_delta) = movement_score(igram, count, &char_to_key);
+            fs += fs_delta;
+            hs += hs_delta;
         }
     }
-    rs *= 1;
+    fs *= 1;
+    hs *= 1;
+
     let bs = 70 * balance_score(&ngrams[1], &char_to_key);
+
     if print_details {
         let format = num_format::CustomFormat::builder()
             .grouping(num_format::Grouping::Standard)
             .separator("_")
             .build().unwrap();
 
-        print!("rs = ");
-        io::stdout().write_formatted(&rs, &format).unwrap();
+        print!("fs = ");
+        io::stdout().write_formatted(&fs, &format).unwrap();
+        print!("\n");
+        print!("hs = ");
+        io::stdout().write_formatted(&hs, &format).unwrap();
         print!("\n");
         print!("ss = ");
         io::stdout().write_formatted(&ss, &format).unwrap();
@@ -256,7 +258,7 @@ fn layout_score(ngrams: &Ngrams, layout: &Layout, print_details: bool) -> i64 {
         io::stdout().write_formatted(&bs, &format).unwrap();
         print!("\n");
     }
-    rs + ss + bs
+    fs + hs + ss + bs
 }
 
 fn random_swap(layout: &Layout) -> Layout {
@@ -286,7 +288,7 @@ fn random_swap(layout: &Layout) -> Layout {
 fn print_layout(layout: &Layout) {
     for row in layout {
         for (i, &chr) in row.iter().enumerate() {
-            if i == row.len() / 2 {
+            if i >= COL_HALF - 1 && i <= COL_HALF + 1 {
                 print!(" ");
             }
             print!("{}", chr as char);
@@ -503,9 +505,9 @@ fn main() {
             every.shuffle(&mut rng);
 
             start_layout = vec![
-                every[0..COL_COUNT as usize].to_vec(),
-                every[COL_COUNT as usize..2*COL_COUNT as usize].to_vec(),
-                every[2*COL_COUNT as usize..3*COL_COUNT as usize].to_vec(),
+                every[0..COL_COUNT].to_vec(),
+                every[COL_COUNT..2*COL_COUNT].to_vec(),
+                every[2*COL_COUNT..3*COL_COUNT].to_vec(),
             ];
         } else {
             start_layout = read_layout();
