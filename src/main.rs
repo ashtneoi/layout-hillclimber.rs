@@ -177,7 +177,7 @@ fn movement_score(
         prev_hand = Some(hand);
         cshu += 1;
         if cshu >= 3 {
-            cshu_score += count * (1 << (cshu - 3));
+            cshu_score -= count * (1 << (cshu - 3));
         }
     }
 
@@ -223,7 +223,7 @@ fn layout_score(ngrams: &Ngrams, layout: &Layout, print_details: bool) -> i64 {
     for &(ref igram, count) in &ngrams[1] {
         ss += strength_score(igram, count, &char_to_key);
     }
-    ss *= 5;
+    ss *= 15;
 
     let mut fs = 0;
     let mut hs = 0;
@@ -234,8 +234,8 @@ fn layout_score(ngrams: &Ngrams, layout: &Layout, print_details: bool) -> i64 {
             hs += hs_delta;
         }
     }
-    fs *= 1;
-    hs *= 1;
+    fs *= 3;
+    hs *= 2;
 
     let bs = 70 * balance_score(&ngrams[1], &char_to_key);
 
@@ -245,14 +245,14 @@ fn layout_score(ngrams: &Ngrams, layout: &Layout, print_details: bool) -> i64 {
             .separator("_")
             .build().unwrap();
 
+        print!("ss = ");
+        io::stdout().write_formatted(&ss, &format).unwrap();
+        print!("\n");
         print!("fs = ");
         io::stdout().write_formatted(&fs, &format).unwrap();
         print!("\n");
         print!("hs = ");
         io::stdout().write_formatted(&hs, &format).unwrap();
-        print!("\n");
-        print!("ss = ");
-        io::stdout().write_formatted(&ss, &format).unwrap();
         print!("\n");
         print!("bs = ");
         io::stdout().write_formatted(&bs, &format).unwrap();
