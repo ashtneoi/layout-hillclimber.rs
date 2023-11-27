@@ -223,7 +223,7 @@ fn layout_score(ngrams: &Ngrams, layout: &Layout, print_details: bool) -> i64 {
     for &(ref igram, count) in &ngrams[1] {
         ss += strength_score(igram, count, &char_to_key);
     }
-    ss *= 15;
+    ss *= 25;
 
     let mut fs = 0;
     let mut hs = 0;
