@@ -270,12 +270,22 @@ fn random_swap(layout: &Layout) -> Layout {
     let mut keys = Vec::new();
     let mut chars = Vec::new();
     // TODO: Rng::gen_range isn't optimal if we're calling it in a loop.
-    let num_keys = rng.gen_range(2..=7);
-    for key_num in sample(&mut rng, 30, num_keys) {
-        let r = key_num / 10;
-        let c = key_num % 10;
-        keys.push((r, c));
-        chars.push(layout[r][c]);
+    if rng.gen_ratio(1, 3) {
+        let num_keys = rng.gen_range(2..=5);
+        for key_num in sample(&mut rng, COL_COUNT, num_keys) {
+            let r = 1;
+            let c = key_num;
+            keys.push((r, c));
+            chars.push(layout[r][c]);
+        }
+    } else {
+        let num_keys = rng.gen_range(2..=7);
+        for key_num in sample(&mut rng, 2 * COL_COUNT, num_keys) {
+            let r = 2 * (key_num / COL_COUNT);
+            let c = key_num % COL_COUNT;
+            keys.push((r, c));
+            chars.push(layout[r][c]);
+        }
     }
     chars.shuffle(&mut rng);
     for (&(r, c), &chr) in keys.iter().zip(&chars) {
@@ -430,6 +440,18 @@ fn search_all(
     (total_attempts, best_layout, best_score)
 }
 
+fn sanitize_layout_char(chr: char) -> Option<char> {
+    if let 'A'..='Z' | 'a'..='z' | '\'' | '.' = chr {
+        Some(chr.to_ascii_uppercase())
+    } else if let '-' | '_' = chr {
+        Some('.')
+    } else if chr.is_ascii_whitespace() {
+        None
+    } else {
+        Some('.')
+    }
+}
+
 fn read_layout() -> Vec<Vec<u8>> {
     let mut stdin = io::stdin();
     let mut layout = Vec::new();
@@ -437,7 +459,7 @@ fn read_layout() -> Vec<Vec<u8>> {
     for _ in 0..=2 {
         let mut row = Vec::new();
         for _ in 0..=9 {
-            let mut chr;
+            let chr;
             loop {
                 match stdin.read(&mut b) {
                     Ok(count) if count == 0 => {
@@ -445,15 +467,8 @@ fn read_layout() -> Vec<Vec<u8>> {
                         exit(1);
                     },
                     Ok(_) => {
-                        chr = b[0] as char;
-                        if let 'A'..='Z' | 'a'..='z' | '\'' | '.' = chr {
-                            chr.make_ascii_uppercase();
-                            break;
-                        } else if let '-' | '_' = chr {
-                            chr = '.';
-                            break;
-                        } else if !chr.is_ascii_whitespace() {
-                            chr = '.';
+                        if let Some(c) = sanitize_layout_char(b[0] as char) {
+                            chr = c;
                             break;
                         }
                     },
@@ -482,6 +497,8 @@ fn main() {
     let cmd = args.next().unwrap();
     if cmd == "search" || cmd == "continue" {
         let nmax = args.next().unwrap().parse().unwrap();
+        let home_row: Vec<char> = args.next().unwrap().chars().filter_map(sanitize_layout_char).collect();
+        assert_eq!(COL_COUNT, home_row.len());
         let ngrams = get_ngrams(nmax);
 
         let max_attempts: Vec<SearchType> = args.map(|x| {
@@ -498,14 +515,17 @@ fn main() {
 
         let start_layout;
         if cmd == "search" {
-            let mut every = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ'...".clone();
+            let every = "ABCDEFGHIJKLMNOPQRSTUVWXYZ'...";
             assert_eq!(every.len(), 30);
-            every.shuffle(&mut rng);
+            let mut top_and_bottom: Vec<char> = every.chars().filter(|c| !home_row.contains(c)).collect();
+            top_and_bottom.shuffle(&mut rng);
+            let mut home_row = home_row;
+            home_row.shuffle(&mut rng);
 
             start_layout = vec![
-                every[0..COL_COUNT].to_vec(),
-                every[COL_COUNT..2*COL_COUNT].to_vec(),
-                every[2*COL_COUNT..3*COL_COUNT].to_vec(),
+                top_and_bottom[0..COL_COUNT].iter().map(|&c| c as u8).collect(),
+                home_row.iter().map(|&c| c as u8).collect(),
+                top_and_bottom[COL_COUNT..2*COL_COUNT].iter().map(|&c| c as u8).collect(),
             ];
         } else {
             start_layout = read_layout();
