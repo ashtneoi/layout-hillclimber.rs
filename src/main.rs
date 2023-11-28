@@ -272,17 +272,22 @@ fn random_swap(layout: &Layout) -> Layout {
     // TODO: Rng::gen_range isn't optimal if we're calling it in a loop.
     if rng.gen_ratio(1, 3) {
         let num_keys = rng.gen_range(2..=5);
-        for key_num in sample(&mut rng, COL_COUNT, num_keys) {
+        for key_num in sample(&mut rng, 8, num_keys) {
             let r = 1;
-            let c = key_num;
+            let c = if key_num < 4 { key_num } else { key_num + COL_COUNT - 8 };
             keys.push((r, c));
             chars.push(layout[r][c]);
         }
     } else {
         let num_keys = rng.gen_range(2..=7);
         for key_num in sample(&mut rng, 2 * COL_COUNT, num_keys) {
-            let r = 2 * (key_num / COL_COUNT);
-            let c = key_num % COL_COUNT;
+            let (r, c) = if key_num < COL_COUNT {
+                (0, key_num)
+            } else if key_num < 2 * COL_COUNT {
+                (2, key_num - COL_COUNT)
+            } else {
+                (1, key_num - 2 * COL_COUNT + 4)
+            };
             keys.push((r, c));
             chars.push(layout[r][c]);
         }
@@ -496,7 +501,7 @@ fn main() {
     if cmd == "search" || cmd == "continue" {
         let nmax = args.next().unwrap().parse().unwrap();
         let home_row: Vec<char> = args.next().unwrap().chars().filter_map(sanitize_layout_char).collect();
-        assert_eq!(COL_COUNT, home_row.len());
+        assert_eq!(8, home_row.len());
         let ngrams = get_ngrams(nmax);
 
         let max_attempts: Vec<SearchType> = args.map(|x| {
@@ -515,15 +520,17 @@ fn main() {
         if cmd == "search" {
             let every = "ABCDEFGHIJKLMNOPQRSTUVWXYZ',.;";
             assert_eq!(every.len(), 30);
-            let mut top_and_bottom: Vec<char> = every.chars().filter(|c| !home_row.contains(c)).collect();
-            top_and_bottom.shuffle(&mut rng);
-            let mut home_row = home_row;
-            home_row.shuffle(&mut rng);
+            let mut outer_rows: Vec<char> = every.chars().filter(|c| !home_row.contains(c)).collect();
+            outer_rows.shuffle(&mut rng);
+            let mut middle_row = Vec::new();
+            middle_row.extend_from_slice(&home_row[0..4]);
+            middle_row.append(&mut outer_rows.split_off(outer_rows.len() - 2));
+            middle_row.extend_from_slice(&home_row[4..8]);
 
             start_layout = vec![
-                top_and_bottom[0..COL_COUNT].iter().map(|&c| c as u8).collect(),
-                home_row.iter().map(|&c| c as u8).collect(),
-                top_and_bottom[COL_COUNT..2*COL_COUNT].iter().map(|&c| c as u8).collect(),
+                outer_rows[0..COL_COUNT].iter().map(|&c| c as u8).collect(),
+                middle_row.iter().map(|&c| c as u8).collect(),
+                outer_rows[COL_COUNT..2*COL_COUNT].iter().map(|&c| c as u8).collect(),
             ];
         } else {
             start_layout = read_layout();
