@@ -500,8 +500,13 @@ fn main() {
     let cmd = args.next().unwrap();
     if cmd == "search" || cmd == "continue" {
         let nmax = args.next().unwrap().parse().unwrap();
-        let home_row: Vec<char> = args.next().unwrap().chars().filter_map(sanitize_layout_char).collect();
-        assert_eq!(8, home_row.len());
+        let home_row: Vec<char>;
+        if cmd == "search" {
+            home_row = args.next().unwrap().chars().filter_map(sanitize_layout_char).collect();
+            assert_eq!(8, home_row.len());
+        } else {
+            home_row = Vec::new();
+        }
         let ngrams = get_ngrams(nmax);
 
         let max_attempts: Vec<SearchType> = args.map(|x| {
