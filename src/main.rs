@@ -441,10 +441,8 @@ fn search_all(
 }
 
 fn sanitize_layout_char(chr: char) -> Option<char> {
-    if let 'A'..='Z' | 'a'..='z' | '\'' | '.' = chr {
+    if let 'A'..='Z' | 'a'..='z' | '\'' | ',' | '.' | ';' = chr {
         Some(chr.to_ascii_uppercase())
-    } else if let '-' | '_' = chr {
-        Some('.')
     } else if chr.is_ascii_whitespace() {
         None
     } else {
@@ -515,7 +513,7 @@ fn main() {
 
         let start_layout;
         if cmd == "search" {
-            let every = "ABCDEFGHIJKLMNOPQRSTUVWXYZ'...";
+            let every = "ABCDEFGHIJKLMNOPQRSTUVWXYZ',.;";
             assert_eq!(every.len(), 30);
             let mut top_and_bottom: Vec<char> = every.chars().filter(|c| !home_row.contains(c)).collect();
             top_and_bottom.shuffle(&mut rng);
