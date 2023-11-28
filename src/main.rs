@@ -297,7 +297,6 @@ fn print_layout(layout: &Layout) {
     }
 }
 
-// hill-climbing random walk
 fn search(
     ngrams: &Ngrams,
     start_score: i64,
@@ -341,11 +340,10 @@ enum SearchType {
     Disturb(i64),
 }
 
-// random peek
 fn search_all(
     ngrams: &Ngrams,
     start_score: i64,
-    start_layout: &Layout, // seed layout?
+    start_layout: &Layout,
     max_attempts: &[SearchType],
 ) -> (u64, Layout, i64) {  // (attempts, best layout, best_score)
     use SearchType::*;
