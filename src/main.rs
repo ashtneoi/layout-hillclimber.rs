@@ -604,5 +604,7 @@ fn main() {
                 }
             }
         }
+    } else {
+        panic!("Unknown subcommand '{}'", cmd);
     }
 }
