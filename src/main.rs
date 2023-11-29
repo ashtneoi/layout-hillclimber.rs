@@ -202,6 +202,17 @@ fn balance_score(
     -(left_sum - right_sum).abs()
 }
 
+fn make_char_to_key(layout: &Layout) -> HashMap<char, (usize, usize)> {
+    let mut char_to_key = HashMap::new();
+    for (r, row) in layout.iter().enumerate() {
+        for (c, &chr) in row.iter().enumerate() {
+            let chr = chr as char;
+            char_to_key.insert(chr, (r, c));
+        }
+    }
+    char_to_key
+}
+
 fn layout_score(ngrams: &Ngrams, layout: &Layout, print_details: bool) -> i64 {
     for row in layout {
         for window in row.windows(3) {
@@ -211,13 +222,7 @@ fn layout_score(ngrams: &Ngrams, layout: &Layout, print_details: bool) -> i64 {
         }
     }
 
-    let mut char_to_key = HashMap::new();
-    for (r, row) in layout.iter().enumerate() {
-        for (c, &chr) in row.iter().enumerate() {
-            let chr = chr as char;
-            char_to_key.insert(chr, (r, c));
-        }
-    }
+    let char_to_key = make_char_to_key(layout);
 
     let mut ss = 0;
     for &(ref igram, count) in &ngrams[1] {
@@ -568,10 +573,36 @@ fn main() {
 
         let layout = read_layout();
 
-        print_layout(&layout);
         let score = layout_score(&ngrams, &layout, true);
         io::stdout().write_formatted(&score, &format).unwrap();
         print!("\n");
         println!("n <= {}", nmax);
+    } else if cmd == "one-hand" {
+        let nmax = args.next().unwrap().parse().unwrap();
+        let ngrams = get_ngrams(nmax);
+
+        let layout = read_layout();
+        let char_to_key = make_char_to_key(&layout);
+
+        for (i, igrams) in ngrams.iter().enumerate().skip(1) {
+            println!("{}-gram", i);
+            for &(ref igram, count) in igrams {
+                if count == 0 {
+                    continue;
+                }
+                let mut left = false;
+                let mut right = false;
+                for c in igram.chars() {
+                    if char_to_key[&c].1 < COL_HALF {
+                        left = true;
+                    } else {
+                        right = true;
+                    }
+                }
+                if !(left && right) {
+                    println!("{}", igram);
+                }
+            }
+        }
     }
 }
