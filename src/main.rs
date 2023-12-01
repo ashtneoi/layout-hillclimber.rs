@@ -266,7 +266,7 @@ fn layout_score(ngrams: &Ngrams, layout: &Layout, print_details: bool) -> i64 {
     fs + hs + ss + bs
 }
 
-fn random_swap(layout: &Layout) -> Layout {
+fn random_swap(layout: &Layout, n: Option<usize>) -> Layout {
     let mut rng = thread_rng();
 
     // TODO: take this as a parameter for better perf
@@ -276,7 +276,7 @@ fn random_swap(layout: &Layout) -> Layout {
     let mut chars = Vec::new();
     // TODO: Rng::gen_range isn't optimal if we're calling it in a loop.
     if rng.gen_ratio(1, 3) {
-        let num_keys = rng.gen_range(2..=5);
+        let num_keys = n.unwrap_or_else(|| rng.gen_range(2..=4));
         for key_num in sample(&mut rng, 8, num_keys) {
             let r = 1;
             let c = if key_num < 4 { key_num } else { key_num + COL_COUNT - 8 };
@@ -284,7 +284,7 @@ fn random_swap(layout: &Layout) -> Layout {
             chars.push(layout[r][c]);
         }
     } else {
-        let num_keys = rng.gen_range(2..=7);
+        let num_keys = n.unwrap_or_else(|| rng.gen_range(2..=7));
         for key_num in sample(&mut rng, 2 * COL_COUNT, num_keys) {
             let (r, c) = if key_num < COL_COUNT {
                 (0, key_num)
@@ -322,6 +322,7 @@ fn search(
     start_score: i64,
     start_layout: Layout,
     max_attempts: u64,
+    swap_n: Option<usize>,
 ) -> (u64, Layout, i64) {  // (attempts, best layout, best score)
     let format = num_format::CustomFormat::builder()
         .grouping(num_format::Grouping::Standard)
@@ -339,7 +340,7 @@ fn search(
             return (i, best_layout, best_score);
         }
 
-        let layout = random_swap(&best_layout);
+        let layout = random_swap(&best_layout, swap_n);
 
         let score = layout_score(ngrams, &layout, false);
         if score > best_score {
@@ -365,6 +366,7 @@ fn search_all(
     start_score: i64,
     start_layout: &Layout,
     max_attempts: &[SearchType],
+    swap_n: Option<usize>,
 ) -> (u64, Layout, i64) {  // (attempts, best layout, best_score)
     use SearchType::*;
 
@@ -372,7 +374,7 @@ fn search_all(
         if let Walk(ma) = max_attempts[0] {
             assert!(ma > 0, "last max_attempts is negative or zero, which is stupid");
             return search(
-                ngrams, start_score, start_layout.clone(), ma as u64);
+                ngrams, start_score, start_layout.clone(), ma as u64, swap_n);
         } else {
             panic!("last max_attempts is Peek(_), which is stupid");
         }
@@ -380,12 +382,10 @@ fn search_all(
 
     if let Disturb(ma) = max_attempts[0] {
         let mut disturbed_layout = start_layout.clone();
-        for _ in 0..ma {
-            let new_layout = random_swap(&disturbed_layout);
-            disturbed_layout = new_layout;
-        }
+        let new_layout = random_swap(&disturbed_layout, Some(ma as usize));
+        disturbed_layout = new_layout;
         return search_all(
-            ngrams, layout_score(ngrams, &disturbed_layout, false), &disturbed_layout, &max_attempts[1..]);
+            ngrams, layout_score(ngrams, &disturbed_layout, false), &disturbed_layout, &max_attempts[1..], swap_n);
     }
 
     let mut total_attempts = 0;
@@ -400,8 +400,8 @@ fn search_all(
             }
 
             let (attempts, layout, score) = match max_attempts[0] {
-                Walk(_) => search_all(ngrams, best_score, &best_layout, &max_attempts[1..]),
-                Peek(_) => search_all(ngrams, start_score, &start_layout, &max_attempts[1..]),
+                Walk(_) => search_all(ngrams, best_score, &best_layout, &max_attempts[1..], swap_n),
+                Peek(_) => search_all(ngrams, start_score, &start_layout, &max_attempts[1..], swap_n),
                 _ => panic!(),
             };
             total_attempts += attempts;
@@ -426,7 +426,7 @@ fn search_all(
             for _ in 0..ma.abs() {
                 children.push(scope.spawn(|_| {
                     search_all(
-                        ngrams, start_score, start_layout, &max_attempts[1..])
+                        ngrams, start_score, start_layout, &max_attempts[1..], swap_n)
                 }));
             }
 
@@ -505,6 +505,12 @@ fn main() {
     let cmd = args.next().unwrap();
     if cmd == "search" || cmd == "continue" {
         let nmax = args.next().unwrap().parse().unwrap();
+        let swap_n_str = args.next().unwrap();
+        let swap_n = if swap_n_str == "-" {
+            None
+        } else {
+            Some(swap_n_str.parse().unwrap())
+        };
         let home_row: Vec<char>;
         if cmd == "search" {
             home_row = args.next().unwrap().chars().filter_map(sanitize_layout_char).collect();
@@ -559,7 +565,7 @@ fn main() {
         flag::register(SIGINT, PLEASE_STOP.clone()).unwrap();
         flag::register(SIGTERM, PLEASE_STOP.clone()).unwrap();
 
-        let (attempts, best_layout, best_score) = search_all(&ngrams, start_score, &start_layout, &max_attempts);
+        let (attempts, best_layout, best_score) = search_all(&ngrams, start_score, &start_layout, &max_attempts, swap_n);
         println!();
         print_layout(&best_layout);
         layout_score(&ngrams, &best_layout, true);
