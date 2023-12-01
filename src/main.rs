@@ -74,9 +74,9 @@ fn get_ngrams(maxlen: usize) -> Ngrams {
         assert!(!line.is_empty());
         let fields: Vec<_> = line.splitn(4, '\t').collect();
         let kind = fields[0];
-        let splats = fields[2];
+        let splats = fields[1];
         assert_eq!(kind, &format!("{}-gram", i));
-        assert_eq!(splats, &format!("{}/*", i));
+        assert_eq!(splats, "*/*");
         line.clear();
         let mut igrams = Vec::new();
         while lines.read_line(&mut line).unwrap() > 0 {
@@ -86,7 +86,7 @@ fn get_ngrams(maxlen: usize) -> Ngrams {
                 // Don't clear line (it's the next header).
                 break;
             }
-            let count = fields[2];
+            let count = fields[1];
             igrams.push((igram.to_string(), count.parse().unwrap()));
             line.clear();
         }
@@ -228,7 +228,7 @@ fn layout_score(ngrams: &Ngrams, layout: &Layout, print_details: bool) -> i64 {
     for &(ref igram, count) in &ngrams[1] {
         ss += strength_score(igram, count, &char_to_key);
     }
-    ss *= 25;
+    ss *= 4;
 
     let mut fs = 0;
     let mut hs = 0;
