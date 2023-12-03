@@ -62,7 +62,7 @@ static MOVEMENT_TABLE: &'static [[[i64; 5]; 5]; 5] = &[
     ],
 ];
 
-fn get_ngrams(maxlen: usize) -> Ngrams {
+fn get_ngrams(maxlen: usize, whole_only: bool) -> Ngrams {
     let mut n = vec![vec![]];
     let f = File::open("ngrams-all.tsv").unwrap();
     let mut lines = BufReader::new(f);
@@ -74,9 +74,15 @@ fn get_ngrams(maxlen: usize) -> Ngrams {
         assert!(!line.is_empty());
         let fields: Vec<_> = line.splitn(4, '\t').collect();
         let kind = fields[0];
-        let splats = fields[1];
         assert_eq!(kind, &format!("{}-gram", i));
-        assert_eq!(splats, "*/*");
+        let splats;
+        if whole_only {
+            splats = fields[2];
+            assert_eq!(splats, &format!("{}/*", i));
+        } else {
+            splats = fields[1];
+            assert_eq!(splats, "*/*");
+        }
         line.clear();
         let mut igrams = Vec::new();
         while lines.read_line(&mut line).unwrap() > 0 {
@@ -86,7 +92,7 @@ fn get_ngrams(maxlen: usize) -> Ngrams {
                 // Don't clear line (it's the next header).
                 break;
             }
-            let count = fields[1];
+            let count = fields[if whole_only { 2 } else { 1 }];
             igrams.push((igram.to_string(), count.parse().unwrap()));
             line.clear();
         }
@@ -494,6 +500,8 @@ fn read_layout() -> Vec<Vec<u8>> {
     layout
 }
 
+static WHOLE_WORDS_ONLY: bool = false;
+
 fn main() {
     let format = num_format::CustomFormat::builder()
         .grouping(num_format::Grouping::Standard)
@@ -518,7 +526,7 @@ fn main() {
         } else {
             home_row = Vec::new();
         }
-        let ngrams = get_ngrams(nmax);
+        let ngrams = get_ngrams(nmax, WHOLE_WORDS_ONLY);
 
         let max_attempts: Vec<SearchType> = args.map(|x| {
             if x.ends_with(".") {
@@ -575,7 +583,7 @@ fn main() {
         println!("n <= {}", nmax);
     } else if cmd == "score" {
         let nmax = args.next().unwrap().parse().unwrap();
-        let ngrams = get_ngrams(nmax);
+        let ngrams = get_ngrams(nmax, WHOLE_WORDS_ONLY);
 
         let layout = read_layout();
 
@@ -585,7 +593,7 @@ fn main() {
         println!("n <= {}", nmax);
     } else if cmd == "one-hand" {
         let nmax = args.next().unwrap().parse().unwrap();
-        let ngrams = get_ngrams(nmax);
+        let ngrams = get_ngrams(nmax, true);
 
         let layout = read_layout();
         let char_to_key = make_char_to_key(&layout);
