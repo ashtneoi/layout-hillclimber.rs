@@ -100,8 +100,8 @@ static COL_COUNT: usize = 10;
 static COL_HALF: usize = COL_COUNT / 2;
 
 static KEY_TO_STRENGTH: &[&[i64]] = &[
-    &[9, 14, 20, 16, 8, 4, 16, 20, 14, 9],
-    &[10, 16, 20, 18, 10, 10, 18, 20, 16, 10],
+    &[0, 14, 20, 16, 8, 4, 16, 20, 14, 0],
+    &[2, 16, 20, 18, 10, 10, 18, 20, 16, 2],
     &[0, 2, 2, 14, 4, 10, 16, 2, 2, 0],
 ];
 
@@ -228,7 +228,7 @@ fn layout_score(ngrams: &Ngrams, layout: &Layout, print_details: bool) -> i64 {
     for &(ref igram, count) in &ngrams[1] {
         ss += strength_score(igram, count, &char_to_key);
     }
-    ss *= 4;
+    ss *= 6;
 
     let mut fs = 0;
     let mut hs = 0;
@@ -240,7 +240,7 @@ fn layout_score(ngrams: &Ngrams, layout: &Layout, print_details: bool) -> i64 {
         }
     }
     fs *= 3;
-    hs *= 2;
+    hs *= 9;
 
     let bs = 70 * balance_score(&ngrams[1], &char_to_key);
 
