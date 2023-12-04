@@ -272,7 +272,14 @@ fn layout_score(ngrams: &Ngrams, layout: &Layout, print_details: bool) -> i64 {
     fs + hs + ss + bs
 }
 
-fn random_swap(layout: &Layout, n: Option<usize>) -> Layout {
+#[derive(Copy, Clone, Eq, PartialEq)]
+enum HomeRowPolicy {
+    Normal,
+    Disjoint,
+    Fixed,
+}
+
+fn random_swap(layout: &Layout, n: Option<usize>, home_row_policy: HomeRowPolicy) -> Layout {
     let mut rng = thread_rng();
 
     // TODO: take this as a parameter for better perf
@@ -281,7 +288,7 @@ fn random_swap(layout: &Layout, n: Option<usize>) -> Layout {
     let mut keys = Vec::new();
     let mut chars = Vec::new();
     // TODO: Rng::gen_range isn't optimal if we're calling it in a loop.
-    if rng.gen_ratio(1, 3) {
+    if home_row_policy == HomeRowPolicy::Disjoint && rng.gen_ratio(1, 3) {
         let num_keys = n.unwrap_or_else(|| rng.gen_range(2..=4));
         for key_num in sample(&mut rng, 8, num_keys) {
             let r = 1;
@@ -290,17 +297,35 @@ fn random_swap(layout: &Layout, n: Option<usize>) -> Layout {
             chars.push(layout[r][c]);
         }
     } else {
-        let num_keys = n.unwrap_or_else(|| rng.gen_range(2..=7));
-        for key_num in sample(&mut rng, 2 * COL_COUNT, num_keys) {
-            let (r, c) = if key_num < COL_COUNT {
-                (0, key_num)
-            } else if key_num < 2 * COL_COUNT {
-                (2, key_num - COL_COUNT)
-            } else {
-                (1, key_num - 2 * COL_COUNT + 4)
-            };
-            keys.push((r, c));
-            chars.push(layout[r][c]);
+        match home_row_policy {
+            HomeRowPolicy::Normal => {
+                let num_keys = n.unwrap_or_else(|| rng.gen_range(2..=7));
+                for key_num in sample(&mut rng, 3 * COL_COUNT, num_keys) {
+                    let (r, c) = if key_num < COL_COUNT {
+                        (0, key_num)
+                    } else if key_num < 2 * COL_COUNT {
+                        (1, key_num - COL_COUNT)
+                    } else {
+                        (2, key_num - 2 * COL_COUNT)
+                    };
+                    keys.push((r, c));
+                    chars.push(layout[r][c]);
+                }
+            },
+            HomeRowPolicy::Disjoint | HomeRowPolicy::Fixed => {
+                let num_keys = n.unwrap_or_else(|| rng.gen_range(2..=7));
+                for key_num in sample(&mut rng, 3 * COL_COUNT - 8, num_keys) {
+                    let (r, c) = if key_num < COL_COUNT {
+                        (0, key_num)
+                    } else if key_num < 2 * COL_COUNT {
+                        (2, key_num - COL_COUNT)
+                    } else {
+                        (1, key_num - 2 * COL_COUNT + 4)
+                    };
+                    keys.push((r, c));
+                    chars.push(layout[r][c]);
+                }
+            },
         }
     }
     chars.shuffle(&mut rng);
@@ -329,6 +354,7 @@ fn search(
     start_layout: Layout,
     max_attempts: u64,
     swap_n: Option<usize>,
+    home_row_policy: HomeRowPolicy,
 ) -> (u64, Layout, i64) {  // (attempts, best layout, best score)
     let format = num_format::CustomFormat::builder()
         .grouping(num_format::Grouping::Standard)
@@ -346,7 +372,7 @@ fn search(
             return (i, best_layout, best_score);
         }
 
-        let layout = random_swap(&best_layout, swap_n);
+        let layout = random_swap(&best_layout, swap_n, home_row_policy);
 
         let score = layout_score(ngrams, &layout, false);
         if score > best_score {
@@ -373,6 +399,7 @@ fn search_all(
     start_layout: &Layout,
     max_attempts: &[SearchType],
     swap_n: Option<usize>,
+    home_row_policy: HomeRowPolicy,
 ) -> (u64, Layout, i64) {  // (attempts, best layout, best_score)
     use SearchType::*;
 
@@ -380,7 +407,7 @@ fn search_all(
         if let Walk(ma) = max_attempts[0] {
             assert!(ma > 0, "last max_attempts is negative or zero, which is stupid");
             return search(
-                ngrams, start_score, start_layout.clone(), ma as u64, swap_n);
+                ngrams, start_score, start_layout.clone(), ma as u64, swap_n, home_row_policy);
         } else {
             panic!("last max_attempts is Peek(_), which is stupid");
         }
@@ -388,10 +415,16 @@ fn search_all(
 
     if let Disturb(ma) = max_attempts[0] {
         let mut disturbed_layout = start_layout.clone();
-        let new_layout = random_swap(&disturbed_layout, Some(ma as usize));
+        let new_layout = random_swap(&disturbed_layout, Some(ma as usize), home_row_policy);
         disturbed_layout = new_layout;
         return search_all(
-            ngrams, layout_score(ngrams, &disturbed_layout, false), &disturbed_layout, &max_attempts[1..], swap_n);
+            ngrams,
+            layout_score(ngrams, &disturbed_layout, false),
+            &disturbed_layout,
+            &max_attempts[1..],
+            swap_n,
+            home_row_policy,
+        );
     }
 
     let mut total_attempts = 0;
@@ -406,8 +439,8 @@ fn search_all(
             }
 
             let (attempts, layout, score) = match max_attempts[0] {
-                Walk(_) => search_all(ngrams, best_score, &best_layout, &max_attempts[1..], swap_n),
-                Peek(_) => search_all(ngrams, start_score, &start_layout, &max_attempts[1..], swap_n),
+                Walk(_) => search_all(ngrams, best_score, &best_layout, &max_attempts[1..], swap_n, home_row_policy),
+                Peek(_) => search_all(ngrams, start_score, &start_layout, &max_attempts[1..], swap_n, home_row_policy),
                 _ => panic!(),
             };
             total_attempts += attempts;
@@ -432,7 +465,13 @@ fn search_all(
             for _ in 0..ma.abs() {
                 children.push(scope.spawn(|_| {
                     search_all(
-                        ngrams, start_score, start_layout, &max_attempts[1..], swap_n)
+                        ngrams,
+                        start_score,
+                        start_layout,
+                        &max_attempts[1..],
+                        swap_n,
+                        home_row_policy,
+                    )
                 }));
             }
 
@@ -520,10 +559,19 @@ fn main() {
             Some(swap_n_str.parse().unwrap())
         };
         let home_row: Vec<char>;
+        let home_row_policy;
         if cmd == "search" {
-            home_row = args.next().unwrap().chars().filter_map(sanitize_layout_char).collect();
-            assert_eq!(8, home_row.len());
+            let arg = args.next().unwrap();
+            if arg == "-" {
+                home_row_policy = HomeRowPolicy::Normal;
+                home_row = Vec::new();
+            } else {
+                home_row_policy = HomeRowPolicy::Disjoint; // TODO: let user specify
+                home_row = arg.chars().filter_map(sanitize_layout_char).collect();
+                assert_eq!(8, home_row.len());
+            }
         } else {
+            home_row_policy = HomeRowPolicy::Disjoint; // TODO: let user specify
             home_row = Vec::new();
         }
         let ngrams = get_ngrams(nmax, WHOLE_WORDS_ONLY);
@@ -540,25 +588,30 @@ fn main() {
 
         let mut rng = rand::thread_rng();
 
-        let start_layout;
-        if cmd == "search" {
-            let every = "ABCDEFGHIJKLMNOPQRSTUVWXYZ',.;";
+        let start_layout = if cmd == "search" {
+            let mut every: Vec<char> = "ABCDEFGHIJKLMNOPQRSTUVWXYZ',.;".chars().collect();
             assert_eq!(every.len(), 30);
-            let mut outer_rows: Vec<char> = every.chars().filter(|c| !home_row.contains(c)).collect();
-            outer_rows.shuffle(&mut rng);
-            let mut middle_row = Vec::new();
-            middle_row.extend_from_slice(&home_row[0..4]);
-            middle_row.append(&mut outer_rows.split_off(outer_rows.len() - 2));
-            middle_row.extend_from_slice(&home_row[4..8]);
-
-            start_layout = vec![
-                outer_rows[0..COL_COUNT].iter().map(|&c| c as u8).collect(),
-                middle_row.iter().map(|&c| c as u8).collect(),
-                outer_rows[COL_COUNT..2*COL_COUNT].iter().map(|&c| c as u8).collect(),
-            ];
+            let mut start_layout = vec![];
+            if home_row.len() == 0 {
+                every.shuffle(&mut rng);
+                start_layout.append(&mut every); // TODO: this is silly
+            } else {
+                every.retain(|c| !home_row.contains(c));
+                every.shuffle(&mut rng);
+                start_layout.extend_from_slice(&every[..COL_COUNT]);
+                start_layout.extend_from_slice(&home_row[..4]);
+                start_layout.extend_from_slice(&every[2*COL_COUNT..]);
+                start_layout.extend_from_slice(&home_row[4..]);
+                start_layout.extend_from_slice(&every[COL_COUNT..2*COL_COUNT]);
+            }
+            vec![
+                start_layout[..COL_COUNT].iter().map(|&c| c as u8).collect(),
+                start_layout[COL_COUNT..2*COL_COUNT].iter().map(|&c| c as u8).collect(),
+                start_layout[2*COL_COUNT..].iter().map(|&c| c as u8).collect(),
+            ]
         } else {
-            start_layout = read_layout();
-        }
+            read_layout()
+        };
 
         let start_score = layout_score(&ngrams, &start_layout, false);
 
@@ -573,7 +626,9 @@ fn main() {
         flag::register(SIGINT, PLEASE_STOP.clone()).unwrap();
         flag::register(SIGTERM, PLEASE_STOP.clone()).unwrap();
 
-        let (attempts, best_layout, best_score) = search_all(&ngrams, start_score, &start_layout, &max_attempts, swap_n);
+        let (attempts, best_layout, best_score) = search_all(
+            &ngrams, start_score, &start_layout, &max_attempts, swap_n, home_row_policy,
+        );
         println!();
         print_layout(&best_layout);
         layout_score(&ngrams, &best_layout, true);
