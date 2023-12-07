@@ -248,7 +248,7 @@ fn layout_score(ngrams: &Ngrams, layout: &Layout, print_details: bool) -> i64 {
     fs *= 3;
     hs *= 9;
 
-    let bs = 70 * balance_score(&ngrams[1], &char_to_key);
+    let bs = 25 * balance_score(&ngrams[1], &char_to_key);
 
     if print_details {
         let format = num_format::CustomFormat::builder()
