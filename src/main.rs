@@ -1,7 +1,7 @@
 use lazy_static::lazy_static;
 use num_format::WriteFormatted;
 use rand::prelude::*;
-use rand::seq::index::sample;
+use rand::distributions::Uniform;
 use signal_hook::consts::signal::{SIGINT, SIGTERM};
 use signal_hook::flag;
 use std::collections::HashMap;
@@ -130,7 +130,7 @@ fn finger_score_delta(
     r: usize, prev_r: usize,
     lc: usize, prev_lc: usize,
 ) -> i64 {
-    MOVEMENT_TABLE[(r - prev_r + 2) as usize][prev_lc as usize][lc as usize]
+    MOVEMENT_TABLE[(r as isize - prev_r as isize + 2) as usize][prev_lc as usize][lc as usize]
         - if (r as isize - prev_r as isize).abs() == 2 { 2 } else { 0 }
         + 2
 }
@@ -277,14 +277,11 @@ fn layout_score(ngrams: &Ngrams, layout: &Layout, print_details: bool) -> i64 {
     fs + hs + ss + bs
 }
 
-#[derive(Copy, Clone, Eq, PartialEq)]
-enum HomeRowPolicy {
-    Normal,
-    Disjoint,
-    Fixed,
-}
-
-fn random_swap(layout: &Layout, n: Option<usize>, home_row_policy: HomeRowPolicy) -> Layout {
+fn random_swap(
+    layout: &Layout,
+    n: &Uniform<usize>,
+    swappable: &[(usize, usize)],
+) -> Layout {
     let mut rng = thread_rng();
 
     // TODO: take this as a parameter for better perf
@@ -292,46 +289,11 @@ fn random_swap(layout: &Layout, n: Option<usize>, home_row_policy: HomeRowPolicy
 
     let mut keys = Vec::new();
     let mut chars = Vec::new();
-    // TODO: Rng::gen_range isn't optimal if we're calling it in a loop.
-    if home_row_policy == HomeRowPolicy::Disjoint && rng.gen_ratio(1, 3) {
-        let num_keys = n.unwrap_or_else(|| rng.gen_range(2..=4));
-        for key_num in sample(&mut rng, 8, num_keys) {
-            let r = 1;
-            let c = if key_num < 4 { key_num } else { key_num + COL_COUNT - 8 };
-            keys.push((r, c));
-            chars.push(layout[r][c]);
-        }
-    } else {
-        match home_row_policy {
-            HomeRowPolicy::Normal => {
-                let num_keys = n.unwrap_or_else(|| rng.gen_range(2..=7));
-                for key_num in sample(&mut rng, 3 * COL_COUNT, num_keys) {
-                    let (r, c) = if key_num < COL_COUNT {
-                        (0, key_num)
-                    } else if key_num < 2 * COL_COUNT {
-                        (1, key_num - COL_COUNT)
-                    } else {
-                        (2, key_num - 2 * COL_COUNT)
-                    };
-                    keys.push((r, c));
-                    chars.push(layout[r][c]);
-                }
-            },
-            HomeRowPolicy::Disjoint | HomeRowPolicy::Fixed => {
-                let num_keys = n.unwrap_or_else(|| rng.gen_range(2..=7));
-                for key_num in sample(&mut rng, 3 * COL_COUNT - 8, num_keys) {
-                    let (r, c) = if key_num < COL_COUNT {
-                        (0, key_num)
-                    } else if key_num < 2 * COL_COUNT {
-                        (2, key_num - COL_COUNT)
-                    } else {
-                        (1, key_num - 2 * COL_COUNT + 4)
-                    };
-                    keys.push((r, c));
-                    chars.push(layout[r][c]);
-                }
-            },
-        }
+
+    let num_keys = n.sample(&mut rng);
+    for &(r, c) in swappable.choose_multiple(&mut rng, num_keys) {
+        keys.push((r, c));
+        chars.push(layout[r][c]);
     }
     chars.shuffle(&mut rng);
     for (&(r, c), &chr) in keys.iter().zip(&chars) {
@@ -358,8 +320,8 @@ fn search(
     start_score: i64,
     start_layout: Layout,
     max_attempts: u64,
-    swap_n: Option<usize>,
-    home_row_policy: HomeRowPolicy,
+    swap_n: &Uniform<usize>,
+    swappable: &[(usize, usize)],
 ) -> (u64, Layout, i64) {  // (attempts, best layout, best score)
     let format = num_format::CustomFormat::builder()
         .grouping(num_format::Grouping::Standard)
@@ -377,7 +339,7 @@ fn search(
             return (i, best_layout, best_score);
         }
 
-        let layout = random_swap(&best_layout, swap_n, home_row_policy);
+        let layout = random_swap(&best_layout, swap_n, swappable);
 
         let score = layout_score(ngrams, &layout, false);
         if score > best_score {
@@ -403,8 +365,8 @@ fn search_all(
     start_score: i64,
     start_layout: &Layout,
     max_attempts: &[SearchType],
-    swap_n: Option<usize>,
-    home_row_policy: HomeRowPolicy,
+    swap_n: &Uniform<usize>,
+    swappable: &[(usize, usize)],
 ) -> (u64, Layout, i64) {  // (attempts, best layout, best_score)
     use SearchType::*;
 
@@ -412,7 +374,7 @@ fn search_all(
         if let Walk(ma) = max_attempts[0] {
             assert!(ma > 0, "last max_attempts is negative or zero, which is stupid");
             return search(
-                ngrams, start_score, start_layout.clone(), ma as u64, swap_n, home_row_policy);
+                ngrams, start_score, start_layout.clone(), ma as u64, swap_n, swappable);
         } else {
             panic!("last max_attempts is Peek(_), which is stupid");
         }
@@ -420,7 +382,7 @@ fn search_all(
 
     if let Disturb(ma) = max_attempts[0] {
         let mut disturbed_layout = start_layout.clone();
-        let new_layout = random_swap(&disturbed_layout, Some(ma as usize), home_row_policy);
+        let new_layout = random_swap(&disturbed_layout, &Uniform::new(ma as usize, ma as usize + 1), swappable);
         disturbed_layout = new_layout;
         return search_all(
             ngrams,
@@ -428,7 +390,7 @@ fn search_all(
             &disturbed_layout,
             &max_attempts[1..],
             swap_n,
-            home_row_policy,
+            swappable,
         );
     }
 
@@ -444,8 +406,8 @@ fn search_all(
             }
 
             let (attempts, layout, score) = match max_attempts[0] {
-                Walk(_) => search_all(ngrams, best_score, &best_layout, &max_attempts[1..], swap_n, home_row_policy),
-                Peek(_) => search_all(ngrams, start_score, &start_layout, &max_attempts[1..], swap_n, home_row_policy),
+                Walk(_) => search_all(ngrams, best_score, &best_layout, &max_attempts[1..], swap_n, swappable),
+                Peek(_) => search_all(ngrams, start_score, &start_layout, &max_attempts[1..], swap_n, swappable),
                 _ => panic!(),
             };
             total_attempts += attempts;
@@ -475,7 +437,7 @@ fn search_all(
                         start_layout,
                         &max_attempts[1..],
                         swap_n,
-                        home_row_policy,
+                        swappable,
                     )
                 }));
             }
@@ -506,7 +468,7 @@ fn sanitize_layout_char(chr: char) -> Option<char> {
     } else if chr.is_ascii_whitespace() {
         None
     } else {
-        Some('.')
+        Some('-')
     }
 }
 
@@ -559,26 +521,11 @@ fn main() {
         let nmax = args.next().unwrap().parse().unwrap();
         let swap_n_str = args.next().unwrap();
         let swap_n = if swap_n_str == "-" {
-            None
+            Uniform::new(2usize, 8usize)
         } else {
-            Some(swap_n_str.parse().unwrap())
+            let n: usize = swap_n_str.parse().unwrap();
+            Uniform::new(n, n + 1)
         };
-        let home_row: Vec<char>;
-        let home_row_policy;
-        if cmd == "search" {
-            let arg = args.next().unwrap();
-            if arg == "-" {
-                home_row_policy = HomeRowPolicy::Normal;
-                home_row = Vec::new();
-            } else {
-                home_row_policy = HomeRowPolicy::Disjoint; // TODO: let user specify
-                home_row = arg.chars().filter_map(sanitize_layout_char).collect();
-                assert_eq!(8, home_row.len());
-            }
-        } else {
-            home_row_policy = HomeRowPolicy::Disjoint; // TODO: let user specify
-            home_row = Vec::new();
-        }
         let ngrams = get_ngrams(nmax, WHOLE_WORDS_ONLY);
 
         let max_attempts: Vec<SearchType> = args.map(|x| {
@@ -593,46 +540,52 @@ fn main() {
 
         let mut rng = rand::thread_rng();
 
-        let start_layout = if cmd == "search" {
-            let mut every: Vec<char> = "ABCDEFGHIJKLMNOPQRSTUVWXYZ',.;".chars().collect();
-            assert_eq!(every.len(), 30);
-            let mut start_layout = vec![];
-            if home_row.len() == 0 {
-                every.shuffle(&mut rng);
-                start_layout.append(&mut every); // TODO: this is silly
-            } else {
-                every.retain(|c| !home_row.contains(c));
-                every.shuffle(&mut rng);
-                start_layout.extend_from_slice(&every[..COL_COUNT]);
-                start_layout.extend_from_slice(&home_row[..4]);
-                start_layout.extend_from_slice(&every[2*COL_COUNT..]);
-                start_layout.extend_from_slice(&home_row[4..]);
-                start_layout.extend_from_slice(&every[COL_COUNT..2*COL_COUNT]);
-            }
-            vec![
-                start_layout[..COL_COUNT].iter().map(|&c| c as u8).collect(),
-                start_layout[COL_COUNT..2*COL_COUNT].iter().map(|&c| c as u8).collect(),
-                start_layout[2*COL_COUNT..].iter().map(|&c| c as u8).collect(),
-            ]
+        let mut start_layout = if cmd == "search" {
+            let hyphens = vec!['-' as u8; COL_COUNT];
+            vec![hyphens.iter().map(|&c| c as u8).collect(); 3]
         } else {
             read_layout()
         };
+
+        let mut swappable = Vec::new();
+        let mut every: Vec<char> = "ABCDEFGHIJKLMNOPQRSTUVWXYZ',.;".chars().collect();
+        assert_eq!(every.len(), 30);
+        for row in &start_layout {
+            for &c in row {
+                if let Some(i) = every.iter().position(|&c2| c2 == c as char) {
+                    every.swap_remove(i);
+                }
+            }
+        }
+        every.shuffle(&mut rng);
+        for r in 0..3 {
+            for c in 0..COL_COUNT {
+                if start_layout[r][c] as char == '-' {
+                    swappable.push((r, c));
+                    start_layout[r][c] = every.pop().unwrap() as u8;
+                }
+            }
+        }
 
         let start_score = layout_score(&ngrams, &start_layout, false);
 
         if cmd == "continue" {
             println!("Continuing from this layout:");
-            print_layout(&start_layout);
+        } else {
+            println!("Starting from this layout:");
+        }
+        print_layout(&start_layout);
+        if cmd == "continue" {
             io::stdout().write_formatted(&start_score, &format).unwrap();
             print!("\n");
-            println!();
         }
+        println!();
 
         flag::register(SIGINT, PLEASE_STOP.clone()).unwrap();
         flag::register(SIGTERM, PLEASE_STOP.clone()).unwrap();
 
         let (attempts, best_layout, best_score) = search_all(
-            &ngrams, start_score, &start_layout, &max_attempts, swap_n, home_row_policy,
+            &ngrams, start_score, &start_layout, &max_attempts, &swap_n, &swappable,
         );
         println!();
         print_layout(&best_layout);
