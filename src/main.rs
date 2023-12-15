@@ -108,7 +108,7 @@ static COL_HALF: usize = COL_COUNT / 2;
 static KEY_TO_STRENGTH: &[&[i64]] = &[
     &[0, 14, 18, 16, 8, 4, 16, 18, 14, 0],
     &[4, 16, 20, 18, 10, 10, 18, 20, 16, 4],
-    &[0, 2, 2, 14, 4, 10, 16, 2, 2, 0],
+    &[0, 2, 2, 8, 4, 10, 16, 2, 2, 0],
 ];
 
 fn strength_score(
@@ -176,7 +176,12 @@ fn movement_score(
         }
 
         if let Some(plk) = prev_lk {
-            finger_score += (count * finger_score_delta(lk.row, plk.row, lk.lcol, plk.lcol)) >> shift;
+            let extra_penalty = if (plk.row == 2 && prev_hand.unwrap() == Hand::Left) || (lk.row == 2 && hand == Hand::Left) {
+                -2
+            } else {
+                0
+            };
+            finger_score += (count * (finger_score_delta(lk.row, plk.row, lk.lcol, plk.lcol) + extra_penalty)) >> shift;
         }
 
         prev_lk = Some(lk);
