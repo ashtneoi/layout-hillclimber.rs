@@ -567,6 +567,14 @@ fn main() {
             }
         }
 
+        if swappable.is_empty() {
+            for r in 0..3 {
+                for c in 0..COL_COUNT {
+                    swappable.push((r, c));
+                }
+            }
+        }
+
         let start_score = layout_score(&ngrams, &start_layout, false);
 
         if cmd == "continue" {
