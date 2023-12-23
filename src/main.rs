@@ -396,6 +396,10 @@ fn search_all(
     quiet: bool,
 ) -> (u64, Layout, i64) {  // (attempts, best layout, best_score)
     use SearchType::*;
+    let format = num_format::CustomFormat::builder()
+        .grouping(num_format::Grouping::Standard)
+        .separator("_")
+        .build().unwrap();
 
     if max_attempts.len() == 1 {
         if let Walk(ma) = max_attempts[0] {
@@ -477,6 +481,11 @@ fn search_all(
                 if score > best_score {
                     best_score = score;
                     best_layout = layout;
+                }
+
+                if !quiet {
+                    io::stdout().write_formatted(&best_score, &format).unwrap();
+                    print!("\n");
                 }
 
                 for _ in 1..max_attempts.len() {
