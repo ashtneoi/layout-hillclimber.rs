@@ -272,7 +272,7 @@ fn layout_score(ngrams: &Ngrams, layout: &Layout, print_details: bool) -> i64 {
         }
     }
     fs *= 2;
-    hs *= 14;
+    hs *= 18;
 
     let bs = 25 * balance_score(&ngrams[1], &char_to_key);
 
@@ -343,6 +343,7 @@ fn search(
     max_attempts: u64,
     swap_n: &Uniform<usize>,
     swappable: &[(usize, usize)],
+    quiet: bool,
 ) -> (u64, Layout, i64) {  // (attempts, best layout, best score)
     let format = num_format::CustomFormat::builder()
         .grouping(num_format::Grouping::Standard)
@@ -352,8 +353,10 @@ fn search(
     let mut best_score = start_score;
     let mut best_layout = start_layout;
 
-    io::stdout().write_formatted(&best_score, &format).unwrap();
-    print!("\n");
+    if !quiet {
+        io::stdout().write_formatted(&best_score, &format).unwrap();
+        print!("\n");
+    }
 
     for i in 0..max_attempts {
         if PLEASE_STOP.load(Ordering::Acquire) {
@@ -366,8 +369,10 @@ fn search(
         if score > best_score {
             best_score = score;
             best_layout = layout;
-            io::stdout().write_formatted(&score, &format).unwrap();
-            print!("\n");
+            if !quiet {
+                io::stdout().write_formatted(&score, &format).unwrap();
+                print!("\n");
+            }
         }
     }
 
@@ -388,6 +393,7 @@ fn search_all(
     max_attempts: &[SearchType],
     swap_n: &Uniform<usize>,
     swappable: &[(usize, usize)],
+    quiet: bool,
 ) -> (u64, Layout, i64) {  // (attempts, best layout, best_score)
     use SearchType::*;
 
@@ -395,7 +401,7 @@ fn search_all(
         if let Walk(ma) = max_attempts[0] {
             assert!(ma > 0, "last max_attempts is negative or zero, which is stupid");
             return search(
-                ngrams, start_score, start_layout.clone(), ma as u64, swap_n, swappable);
+                ngrams, start_score, start_layout.clone(), ma as u64, swap_n, swappable, quiet);
         } else {
             panic!("last max_attempts is Peek(_), which is stupid");
         }
@@ -412,6 +418,7 @@ fn search_all(
             &max_attempts[1..],
             swap_n,
             swappable,
+            quiet,
         );
     }
 
@@ -427,8 +434,8 @@ fn search_all(
             }
 
             let (attempts, layout, score) = match max_attempts[0] {
-                Walk(_) => search_all(ngrams, best_score, &best_layout, &max_attempts[1..], swap_n, swappable),
-                Peek(_) => search_all(ngrams, start_score, &start_layout, &max_attempts[1..], swap_n, swappable),
+                Walk(_) => search_all(ngrams, best_score, &best_layout, &max_attempts[1..], swap_n, swappable, quiet),
+                Peek(_) => search_all(ngrams, start_score, &start_layout, &max_attempts[1..], swap_n, swappable, quiet),
                 _ => panic!(),
             };
             total_attempts += attempts;
@@ -459,6 +466,7 @@ fn search_all(
                         &max_attempts[1..],
                         swap_n,
                         swappable,
+                        true,
                     )
                 }));
             }
@@ -614,7 +622,7 @@ fn main() {
         flag::register(SIGTERM, PLEASE_STOP.clone()).unwrap();
 
         let (attempts, best_layout, best_score) = search_all(
-            &ngrams, start_score, &start_layout, &max_attempts, &swap_n, &swappable,
+            &ngrams, start_score, &start_layout, &max_attempts, &swap_n, &swappable, false
         );
         println!();
         print_layout(&best_layout);
