@@ -176,12 +176,33 @@ fn movement_score(
         }
 
         if let Some(plk) = prev_lk {
-            let extra_penalty = if (plk.row == 2 && prev_hand.unwrap() == Hand::Left) || (lk.row == 2 && hand == Hand::Left) {
-                -2
-            } else {
-                0
+            let inward = lk.lcol > plk.lcol;
+            let rightward = inward == (hand == Hand::Left);
+            let horiz_abs = match (plk.row, lk.row) {
+                (0, 0) | (1, 1) | (2, 2) => 0,
+                (0, 1) | (1, 0) => 1,
+                (0, 2) | (2, 0) => 3,
+                (1, 2) | (2, 1) => 2,
+                (_, _) => unreachable!(),
             };
-            finger_score += (count * (finger_score_delta(lk.row, plk.row, lk.lcol, plk.lcol) + extra_penalty)) >> shift;
+            let upward = lk.row < plk.row;
+            let rotate_inward = match hand {
+                Hand::Left => upward == rightward,
+                Hand::Right => upward != rightward,
+            };
+            let stretch = match hand {
+                Hand::Left => !rotate_inward,
+                Hand::Right => rotate_inward,
+            };
+            let stagger_score = match (stretch, rotate_inward) {
+                (true, true) => -horiz_abs,
+                (true, false) => 0,
+                (false, true) => -horiz_abs,
+                (false, false) => 0, // TODO: or horiz_abs?
+            };
+            // let rotate_score = if rotate_inward { -1 } else { 0 };
+
+            finger_score += (count * (3 * finger_score_delta(lk.row, plk.row, lk.lcol, plk.lcol) + stagger_score)) >> shift;
         }
 
         prev_lk = Some(lk);
@@ -250,8 +271,8 @@ fn layout_score(ngrams: &Ngrams, layout: &Layout, print_details: bool) -> i64 {
             hs += hs_delta;
         }
     }
-    fs *= 3;
-    hs *= 9;
+    fs *= 2;
+    hs *= 14;
 
     let bs = 25 * balance_score(&ngrams[1], &char_to_key);
 
