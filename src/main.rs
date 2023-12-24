@@ -245,7 +245,14 @@ fn make_char_to_key(layout: &Layout) -> HashMap<char, (usize, usize)> {
     char_to_key
 }
 
-fn layout_score(ngrams: &Ngrams, layout: &Layout, print_details: bool) -> i64 {
+struct Weights {
+    ss: i64,
+    fs: i64,
+    hs: i64,
+    bs: i64,
+}
+
+fn layout_score(ngrams: &Ngrams, layout: &Layout, print_details: bool, weights: &Weights) -> i64 {
     for row in layout {
         for window in row.windows(3) {
             if window == &[0x41, 0x4E, 0x54] { // forbidden word
@@ -291,8 +298,9 @@ fn layout_score(ngrams: &Ngrams, layout: &Layout, print_details: bool) -> i64 {
         print!("bs = ");
         io::stdout().write_formatted(&bs, &format).unwrap();
         print!("\n");
+        println!("weights: {} {} {} {}", weights.ss, weights.fs, weights.hs, weights.bs);
     }
-    2*fs + 18*hs + 6*ss + 25*bs
+    weights.ss*ss + weights.fs*fs + weights.hs*hs + weights.bs*bs
 }
 
 fn random_swap(
@@ -341,6 +349,7 @@ fn search(
     swap_n: &Uniform<usize>,
     swappable: &[(usize, usize)],
     quiet: bool,
+    weights: &Weights,
 ) -> (u64, Layout, i64) {  // (attempts, best layout, best score)
     let format = num_format::CustomFormat::builder()
         .grouping(num_format::Grouping::Standard)
@@ -362,7 +371,7 @@ fn search(
 
         let layout = random_swap(&best_layout, swap_n, swappable);
 
-        let score = layout_score(ngrams, &layout, false);
+        let score = layout_score(ngrams, &layout, false, weights);
         if score > best_score {
             best_score = score;
             best_layout = layout;
@@ -391,6 +400,7 @@ fn search_all(
     swap_n: &Uniform<usize>,
     swappable: &[(usize, usize)],
     quiet: bool,
+    weights: &Weights,
 ) -> (u64, Layout, i64) {  // (attempts, best layout, best_score)
     use SearchType::*;
     let format = num_format::CustomFormat::builder()
@@ -402,7 +412,7 @@ fn search_all(
         if let Walk(ma) = max_attempts[0] {
             assert!(ma > 0, "last max_attempts is negative or zero, which is stupid");
             return search(
-                ngrams, start_score, start_layout.clone(), ma as u64, swap_n, swappable, quiet);
+                ngrams, start_score, start_layout.clone(), ma as u64, swap_n, swappable, quiet, weights);
         } else {
             panic!("last max_attempts is Peek(_), which is stupid");
         }
@@ -414,12 +424,13 @@ fn search_all(
         disturbed_layout = new_layout;
         return search_all(
             ngrams,
-            layout_score(ngrams, &disturbed_layout, false),
+            layout_score(ngrams, &disturbed_layout, false, weights),
             &disturbed_layout,
             &max_attempts[1..],
             swap_n,
             swappable,
             quiet,
+            weights,
         );
     }
 
@@ -435,8 +446,8 @@ fn search_all(
             }
 
             let (attempts, layout, score) = match max_attempts[0] {
-                Walk(_) => search_all(ngrams, best_score, &best_layout, &max_attempts[1..], swap_n, swappable, quiet),
-                Peek(_) => search_all(ngrams, start_score, &start_layout, &max_attempts[1..], swap_n, swappable, quiet),
+                Walk(_) => search_all(ngrams, best_score, &best_layout, &max_attempts[1..], swap_n, swappable, quiet, weights),
+                Peek(_) => search_all(ngrams, start_score, &start_layout, &max_attempts[1..], swap_n, swappable, quiet, weights),
                 _ => panic!(),
             };
             total_attempts += attempts;
@@ -445,10 +456,12 @@ fn search_all(
                 best_layout = layout;
             }
 
-            for _ in 1..max_attempts.len() {
-                print!("<");
+            if !quiet {
+                for _ in 1..max_attempts.len() {
+                    print!("<");
+                }
+                print!("\n");
             }
-            print!("\n");
         }
     } else {
         match max_attempts[0] {
@@ -468,6 +481,7 @@ fn search_all(
                         swap_n,
                         swappable,
                         true,
+                        weights,
                     )
                 }));
             }
@@ -479,11 +493,6 @@ fn search_all(
                     best_score = score;
                     best_layout = layout;
                 }
-
-                for _ in 1..max_attempts.len() {
-                    print!("<");
-                }
-                print!("\n");
             }
         }).unwrap();
 
@@ -562,6 +571,13 @@ fn main() {
         };
         let ngrams = get_ngrams(nmax, WHOLE_WORDS_ONLY);
 
+        let weights = Weights {
+            ss: args.next().unwrap().parse().unwrap(),
+            fs: args.next().unwrap().parse().unwrap(),
+            hs: args.next().unwrap().parse().unwrap(),
+            bs: args.next().unwrap().parse().unwrap(),
+        };
+
         let max_attempts: Vec<SearchType> = args.map(|x| {
             if x.ends_with(".") {
                 SearchType::Peek(x[..x.len() - ".".len()].parse().unwrap())
@@ -609,7 +625,7 @@ fn main() {
             }
         }
 
-        let start_score = layout_score(&ngrams, &start_layout, false);
+        let start_score = layout_score(&ngrams, &start_layout, false, &weights);
 
         if cmd == "continue" {
             println!("Continuing from this layout:");
@@ -627,11 +643,11 @@ fn main() {
         flag::register(SIGTERM, PLEASE_STOP.clone()).unwrap();
 
         let (attempts, best_layout, best_score) = search_all(
-            &ngrams, start_score, &start_layout, &max_attempts, &swap_n, &swappable, false
+            &ngrams, start_score, &start_layout, &max_attempts, &swap_n, &swappable, false, &weights
         );
         println!();
         print_layout(&best_layout);
-        layout_score(&ngrams, &best_layout, true);
+        layout_score(&ngrams, &best_layout, true, &weights);
         io::stdout().write_formatted(&best_score, &format).unwrap();
         print!("\n");
         println!("attempts: {} / {:?}", attempts, max_attempts);
@@ -642,7 +658,14 @@ fn main() {
 
         let layout = read_layout();
 
-        let score = layout_score(&ngrams, &layout, true);
+        let weights = Weights {
+            ss: args.next().unwrap().parse().unwrap(),
+            fs: args.next().unwrap().parse().unwrap(),
+            hs: args.next().unwrap().parse().unwrap(),
+            bs: args.next().unwrap().parse().unwrap(),
+        };
+
+        let score = layout_score(&ngrams, &layout, true, &weights);
         io::stdout().write_formatted(&score, &format).unwrap();
         print!("\n");
         println!("n <= {}", nmax);
