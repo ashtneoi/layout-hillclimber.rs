@@ -463,6 +463,34 @@ fn search_all(
                 print!("\n");
             }
         }
+    } else if ma == 0 {
+        match max_attempts[0] {
+            Walk(_) => (),
+            _ => panic!(),
+        }
+
+        loop {
+            if PLEASE_STOP.load(Ordering::Acquire) {
+                break;
+            }
+
+            let (attempts, layout, score) = search_all(
+                ngrams, best_score, &best_layout, &max_attempts[1..], swap_n, swappable, quiet, weights);
+            total_attempts += attempts;
+            if score > best_score {
+                best_score = score;
+                best_layout = layout;
+            } else {
+                break;
+            }
+
+            if !quiet {
+                for _ in 1..max_attempts.len() {
+                    print!("<");
+                }
+                print!("\n");
+            }
+        }
     } else {
         match max_attempts[0] {
             Walk(_) => panic!(),
