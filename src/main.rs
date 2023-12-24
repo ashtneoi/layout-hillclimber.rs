@@ -483,11 +483,6 @@ fn search_all(
                     best_layout = layout;
                 }
 
-                if !quiet {
-                    io::stdout().write_formatted(&best_score, &format).unwrap();
-                    print!("\n");
-                }
-
                 for _ in 1..max_attempts.len() {
                     print!("<");
                 }
@@ -495,6 +490,10 @@ fn search_all(
             }
         }).unwrap();
 
+        if !quiet {
+            io::stdout().write_formatted(&best_score, &format).unwrap();
+            print!("\n");
+        }
     }
 
     (total_attempts, best_layout, best_score)
