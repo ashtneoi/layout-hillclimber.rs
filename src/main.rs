@@ -260,7 +260,6 @@ fn layout_score(ngrams: &Ngrams, layout: &Layout, print_details: bool) -> i64 {
     for &(ref igram, count) in &ngrams[1] {
         ss += strength_score(igram, count, &char_to_key);
     }
-    ss *= 6;
 
     let mut fs = 0;
     let mut hs = 0;
@@ -271,10 +270,8 @@ fn layout_score(ngrams: &Ngrams, layout: &Layout, print_details: bool) -> i64 {
             hs += hs_delta;
         }
     }
-    fs *= 2;
-    hs *= 18;
 
-    let bs = 25 * balance_score(&ngrams[1], &char_to_key);
+    let bs = balance_score(&ngrams[1], &char_to_key);
 
     if print_details {
         let format = num_format::CustomFormat::builder()
@@ -295,7 +292,7 @@ fn layout_score(ngrams: &Ngrams, layout: &Layout, print_details: bool) -> i64 {
         io::stdout().write_formatted(&bs, &format).unwrap();
         print!("\n");
     }
-    fs + hs + ss + bs
+    2*fs + 18*hs + 6*ss + 25*bs
 }
 
 fn random_swap(
