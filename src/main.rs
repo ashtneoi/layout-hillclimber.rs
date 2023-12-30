@@ -106,7 +106,7 @@ static COL_COUNT: usize = 10;
 static COL_HALF: usize = COL_COUNT / 2;
 
 static KEY_TO_STRENGTH: &[&[i64]] = &[
-    &[0, 14, 18, 16, 8, 4, 16, 18, 14, 0],
+    &[2, 14, 18, 11, 8, 4, 11, 18, 14, 2],
     &[4, 16, 20, 18, 10, 10, 18, 20, 16, 4],
     &[0, 2, 2, 8, 4, 10, 16, 2, 2, 0],
 ];
@@ -195,14 +195,14 @@ fn movement_score(
                 Hand::Right => rotate_inward,
             };
             let stagger_score = match (stretch, rotate_inward) {
-                (true, true) => -horiz_abs,
+                (true, true) => -2*horiz_abs,
                 (true, false) => 0,
                 (false, true) => -horiz_abs,
                 (false, false) => 0, // TODO: or horiz_abs?
             };
             // let rotate_score = if rotate_inward { -1 } else { 0 };
 
-            finger_score += (count * (3 * finger_score_delta(lk.row, plk.row, lk.lcol, plk.lcol) + stagger_score)) >> shift;
+            finger_score += (count * (6 * finger_score_delta(lk.row, plk.row, lk.lcol, plk.lcol) + stagger_score)) >> shift;
         }
 
         prev_lk = Some(lk);
